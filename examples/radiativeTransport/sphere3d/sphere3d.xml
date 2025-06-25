@@ -1,0 +1,18 @@
+<Param>
+  <Application>
+    <Name>sphere3d</Name>
+    <dim>3</dim>
+    <DiscParam>
+      <resolution>40</resolution>
+    </DiscParam>
+    <PhysParam>
+      <maxTime>100</maxTime>
+    </PhysParam>
+    <absorption>0.5</absorption>
+    <scattering>1.5</scattering>
+  </Application>
+  <Output>
+<!--saveIter: seconds-->
+    <saveSec>1</saveSec>
+  </Output>
+</Param>

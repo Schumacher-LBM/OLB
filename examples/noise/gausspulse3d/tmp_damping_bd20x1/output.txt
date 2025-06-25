@@ -1,0 +1,78 @@
+[main] 
+[main] outdir set to ./tmp_damping_bd20x1
+[main] Gauss pulse: b=0.05; alpha=277.259
+[main] Boundary condition type specified to periodic.
+[main] 
+[main] Input to unitconverter: res=101, charL=1, charV=1, Ma=0.1, rho0=1
+[UnitConverter] ----------------- UnitConverter information -----------------
+[UnitConverter] -- Parameters:
+[UnitConverter] Resolution:                       N=              101
+[UnitConverter] Lattice velocity:                 latticeU=       0.057735
+[UnitConverter] Lattice relaxation frequency:     omega=          1.99896
+[UnitConverter] Lattice relaxation time:          tau=            0.500259
+[UnitConverter] Characteristical length(m):       charL=          1
+[UnitConverter] Characteristical speed(m/s):      charU=          1
+[UnitConverter] Phys. kinematic viscosity(m^2/s): charNu=         1.48e-05
+[UnitConverter] Phys. density(kg/m^d):            charRho=        1
+[UnitConverter] Characteristical pressure(N/m^2): charPressure=   0
+[UnitConverter] Mach number:                      machNumber=     0.1
+[UnitConverter] Reynolds number:                  reynoldsNumber= 67567.6
+[UnitConverter] Knudsen number:                   knudsenNumber=  1.48e-06
+[UnitConverter] Characteristical CFL number:      charCFLnumber=  0.057735
+[UnitConverter] 
+[UnitConverter] -- Conversion factors:
+[UnitConverter] Voxel length(m):                  physDeltaX=     0.00990099
+[UnitConverter] Time step(s):                     physDeltaT=     0.000571634
+[UnitConverter] Velocity factor(m/s):             physVelocity=   17.3205
+[UnitConverter] Density factor(kg/m^3):           physDensity=    1
+[UnitConverter] Mass factor(kg):                  physMass=       9.7059e-07
+[UnitConverter] Viscosity factor(m^2/s):          physViscosity=  0.17149
+[UnitConverter] Force factor(N):                  physForce=      0.0294089
+[UnitConverter] Pressure factor(N/m^2):           physPressure=   300
+[UnitConverter] -------------------------------------------------------------
+[UnitConverter] WARNING:
+[UnitConverter] Potentially UNSTABLE combination of relaxation time (tau=0.500259)
+[UnitConverter] and characteristical CFL number (lattice velocity) charCFLnumber=0.057735!
+[UnitConverter] Potentially maximum characteristical CFL number (maxCharCFLnumber=0.00207126)
+[UnitConverter] Actual characteristical CFL number (charCFLnumber=0.057735) > 0.00207126
+[UnitConverter] Please reduce the the cell size or the time step size!
+[UnitConverter] We recommend to use the cell size of 0.0003552 m and the time step size of 2.05075e-05 s.
+[UnitConverter] -------------------------------------------------------------
+[main] Fluid Domain = 1^3; Simulation Domain = 1.39604^3
+[main] overlap=3; dampingDepth_LU=20; setting overlap>=dampingDepthLU to allow the boundary to be so large.
+[prepareGeometry] 
+[prepareGeometry] Prepare Geometry ...
+[SuperGeometryStatistics3D] updated
+[SuperGeometry3D] the model is correct!
+[SuperGeometryStatistics3D] materialNumber=1; count=1802080; minPhysR=(-0.69802,-0.69802,-0.69802); maxPhysR=(0.69802,0.69802,0.69802)
+[SuperGeometryStatistics3D] materialNumber=3; count=1061208; minPhysR=(-0.5,-0.5,-0.5); maxPhysR=(0.5,0.5,0.5)
+[SuperGeometryStatistics3D] countTotal[1e6]=2.86329
+[prepareGeometry] Materials:
+[prepareGeometry] 0 = no Material (default, should be immediately renamed to Check)
+[prepareGeometry] 1 = fluid (except damping and eternal, then it's the far field)
+[prepareGeometry] 2 = check (should be empty, but corners may have issues with the normal; check is therefore treated as inflow
+[prepareGeometry] 3 = far field (except damping and eternal, then it's the fluid domain)
+[prepareGeometry] 4 = inflow
+[prepareGeometry] 5 = outflow
+[prepareGeometry] 6 = around domain
+[prepareGeometry] Prepare Geometry ... OK
+[main] Actual fluid material number is 3; number of fluid voxels: 1061208
+[prepareLattice] 
+[prepareLattice] Prepare Lattice ...
+[prepareLattice] Prepare Lattice ... OK
+[main] Timing setup:
+[main] maxLatticeT=300; maxPhysT=0.17149; dt=0.000571634
+[main] iTout=0; tout=0; iTvtk=60; iTplot=3
+[main] 
+[main] starting simulation...
+[Timer] step=0; percent=0; passedTime=1.17; remTime=349.83; MLUPs=0
+[LatticeStatistics] step=0; physT=0; maxCFL=0.057735; avgEnergy=0.00166667; avgRho=1
+[Timer] step=60; percent=20; passedTime=35.271; remTime=141.084; MLUPs=5.03804
+[LatticeStatistics] step=60; physT=0.034298; maxCFL=0.057757; avgEnergy=0.00166667; avgRho=1
+[Timer] step=120; percent=40; passedTime=69.574; remTime=104.361; MLUPs=5.00823
+[LatticeStatistics] step=120; physT=0.0685961; maxCFL=0.0577462; avgEnergy=0.00166667; avgRho=0.999999
+[Timer] step=180; percent=60; passedTime=107.92; remTime=71.9467; MLUPs=4.4803
+[LatticeStatistics] step=180; physT=0.102894; maxCFL=0.0577408; avgEnergy=0.00166667; avgRho=1
+=1
+[Timer] step=240; percent=80; passedTime=151.781; remTime=37.9453; MLUPs=3.76608
+[LatticeStatistics] step=240; physT=0.137192; maxCFL=0.057736; avgEnergy=0.00166667; avgRho=1

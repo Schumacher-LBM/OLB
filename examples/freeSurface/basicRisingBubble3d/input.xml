@@ -1,0 +1,72 @@
+<!-- Few parameters are read manually in this example, indicated by read manually -->
+<!-- The other parameters are read automatically by the unit converter class -->
+<Param>
+    <!-- Setup computational domain in x-, y-, and z-directions as a factor of bubble radius, i.e., [16R, 16R, 40R] -->
+    <Geometry>
+        <Length>0.2088</Length>                                     <!-- Manual Read: cuboid length [m] -->
+        <Height>0.2088</Height>                                     <!-- Manual Read: cuboid height [m] -->
+        <Width>0.522</Width>                                        <!-- Manual Read: cuboid width [m] -->
+        <Bubble>
+            <Radius>0.01305</Radius>                                <!-- Manual Read: bubble radius [m] -->
+            <Center>0.1044 0.1044 0.0261</Center>                   <!-- Manual Read: bubble center [8R, 8R, 2R] -->
+        </Bubble>
+    </Geometry>
+    <!-- Setup simulation parameters and material properties in SI units -->
+    <Application>
+        <Name>basicRisingBubble3d</Name>
+        <dim>3</dim>
+        <OlbDir>../../</OlbDir>                                     <!-- Manual Read: OpenLB's root directory -->
+        <!-- Discretization method needs at least two parameters -->
+        <Discretization>
+            <Resolution>16</Resolution>                             <!-- Auto. Read: lattice resolution -->
+            <LatticeRelaxationTime>0.5010</LatticeRelaxationTime>   <!-- Auto. Read: lattice relaxation time -->
+            <PhysDeltaX></PhysDeltaX>                               <!-- Auto. Read: physical spacing [m] -->
+            <PhysDeltaT></PhysDeltaT>                               <!-- Auto. Read: physical time step [s] -->
+            <CharLatticeVelocity></CharLatticeVelocity>             <!-- Auto. Read: char. lattice velocity -->
+        </Discretization>
+        <!-- Physical parameters must be given in SI unit system -->
+        <PhysParameters>
+            <MaxPhysTime>1.0</MaxPhysTime>                          <!-- Manual Read: max. simulation time [s] -->
+            <CharPhysLength>0.0261</CharPhysLength>                 <!-- Auto.  Read: char. length [m] -->
+            <CharPhysPressure>0.0</CharPhysPressure>                <!-- Auto.  Read: char. pressure [Pa] -->
+            <CharPhysVelocity>0.35331</CharPhysVelocity>            <!-- Auto.  Read: char. velocity [m/s] -->
+            <PhysViscosity>9.80996e-5</PhysViscosity>               <!-- Auto.  Read: fluid viscosity [m^2/s] -->
+            <PhysDensity>1095.0</PhysDensity>                       <!-- Auto.  Read: fluid density [kg/m^3] -->
+            <PhysGravity>0.0 0.0 -9.81</PhysGravity>                <!-- Manual Read: gravity vector [m/s^2] -->
+            <DropIsolatedCells>true</DropIsolatedCells>             <!-- Manual Read: drop isolated cells in FSLBM -->
+            <TransitionThreshold>0.001</TransitionThreshold>        <!-- Manual Read: transition threshold in FSLBM -->
+            <LonelyThreshold>1.0</LonelyThreshold>                  <!-- Manual Read: lonely threshold in FSLBM -->
+            <HasSurfaceTension>true</HasSurfaceTension>             <!-- Manual Read: enable surface tension in FSLBM -->
+            <SurfaceTensionCoeff>0.06363064</SurfaceTensionCoeff>   <!-- Manual Read: surface tension coefficient [N/m] -->
+        </PhysParameters>
+        <!-- Solver convergence criteria, , all must be read manually -->
+        <ConvergenceCheck>
+            <Type></Type>
+            <Period>0.05</Period>                                   <!-- Manual Read: convergence check period [s] -->
+            <Residuum>1e-8</Residuum>                               <!-- Manual Read: convergence check residuum -->
+        </ConvergenceCheck>
+    </Application>
+    <!-- Setup data output settings, all must be read manually -->
+    <Output>
+        <OutputDir>./tmp/</OutputDir>                               <!-- Manual Read: OpenLB's output directory -->
+        <Log>
+            <FileName></FileName>
+            <SaveTime>0.05</SaveTime>                               <!-- Manual Read: console output interval [s] -->
+            <VerboseLog></VerboseLog>
+        </Log>
+        <VisualizationVTK>
+            <FileName>basicRisingBubble3d</FileName>                <!-- Manual Read: VTK file name -->
+            <SaveTime>0.05</SaveTime>                               <!-- Manual Read: VTK save time interval [s] -->
+        </VisualizationVTK>
+        <SampleData>
+            <FileName>basicRisingBubble3d</FileName>                <!-- Manual Read: Sample file name -->
+            <Steps></Steps>                                         <!-- Manual Read: Number of sample lines -->
+        </SampleData>
+        <VisualizationImages>
+            <FileName></FileName>
+            <SaveTime></SaveTime>
+        </VisualizationImages>
+        <Timer>
+        </Timer>
+    </Output>
+</Param>

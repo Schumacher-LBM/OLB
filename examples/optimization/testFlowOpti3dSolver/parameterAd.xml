@@ -1,0 +1,98 @@
+<Param>
+  <Application>
+    <Name> testFlow3dSolver </Name>
+    <dim> 3 </dim>
+    <OlbDir> ../../../ </OlbDir>
+    <InitMode> Analytical </InitMode>
+    <Discretization>
+      <Resolution> 11 </Resolution>
+      <CharLatticeVelocity> 0.07 </CharLatticeVelocity>  // has to be set to 1/ Resolution manually
+    </Discretization>
+    <PhysParameters>
+      <CharPhysLength> 1 </CharPhysLength>
+      <CharPhysVelocity> 1 </CharPhysVelocity>
+      <PhysDensity> 1. </PhysDensity> <!-- 1200.0 -->
+      <CharPhysPressure> 0. </CharPhysPressure> <!-- 0.0 -->
+      <PhysViscosity> 0.1 </PhysViscosity> <!-- 0.01 -->
+      <PhysMaxTime> 6.0 </PhysMaxTime> <!-- 8.0 -->
+      <StartUpTime> 4.0 </StartUpTime> <!-- 5.0 -->
+      <BoundaryValueUpdateTime> 0.001 </BoundaryValueUpdateTime>
+    </PhysParameters>
+    <Mesh>
+      <noCuboidsPerProcess> 1  </noCuboidsPerProcess>
+      <Overlap> 3 </Overlap>
+    </Mesh>
+    <StabilityCheck>
+      <Frequency> 0.06 </Frequency>
+      <ExitMaxU> false </ExitMaxU>
+      <BoundMaxU> 0.3 </BoundMaxU>
+    </StabilityCheck>
+    <BoundaryCondition> interpolated </BoundaryCondition>
+    <Domain> sphere </Domain>
+    <PressureFilter> true </PressureFilter>
+
+  </Application>
+
+  <Optimization>
+    <ControlMaterial> 1 </ControlMaterial>
+    <ControlTolerance> 0 </ControlTolerance>
+    <CuboidWiseControl> true </CuboidWiseControl>
+    <FailOnMaxIter> false </FailOnMaxIter>
+    <FieldDimension> 3 </FieldDimension>
+    <InputFileName> control.dat </InputFileName>
+    <L> 20 </L>
+    <Lambda> 1. </Lambda>
+    <LogFileName> log.txt </LogFileName>
+    <MaxIter> 10 </MaxIter>
+    <MaxStepAttempts> 20 </MaxStepAttempts>
+    <ObjectiveMaterial> 1 </ObjectiveMaterial>
+    <Projection> ForceFactor </Projection>
+    <ReferenceSolution> true </ReferenceSolution>
+    <RegAlpha> 0 </RegAlpha>
+    <OptiReferenceMode> analytical </OptiReferenceMode>
+    <StartCoefH> 0.0001 </StartCoefH>
+    <StartValue> 0.1 </StartValue>
+    <StartValueType> Control </StartValueType>
+    <StepCondition> Wolfe </StepCondition>
+    <TestFlowOptiMode> velocity </TestFlowOptiMode>
+    <Tolerance> 1e-10 </Tolerance>
+    <Verbose> true </Verbose>
+    <VisualizationGnuplot>
+    <VisualizedParameters>VALUE ERROR NORM_DERIVATIVE</VisualizedParameters>
+    </VisualizationGnuplot>
+  </Optimization>
+
+  <Output>
+    <OutputDir> ./tmp/optiAd/ </OutputDir>
+    <PrintLogConverter> false </PrintLogConverter>
+
+    <Log>
+      <SaveTime> 2.5  </SaveTime>
+      <VerboseLog> false </VerboseLog>
+    </Log>
+
+    <VisualizationVTK>
+      <Output> intervals </Output>
+      <SaveTime> 0.5  </SaveTime>
+      <Filename> testflow </Filename>
+    </VisualizationVTK>
+
+    <VisualizationImages>
+      <Output> off </Output>
+      <SaveTime> 40000.  </SaveTime>
+    </VisualizationImages>
+
+    <VisualizationGnuplot>
+      <Output> off </Output>
+    </VisualizationGnuplot>
+
+    <Timer>
+      <PrintMode>0</PrintMode>
+      <SkipType>physical time</SkipType>
+      <PhysTime>8.</PhysTime>
+      <PrintSummary>1</PrintSummary>
+    </Timer>
+
+  </Output>
+
+</Param>

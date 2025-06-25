@@ -1,0 +1,14 @@
+The gausspulse3d example initializes pressure with a gaussian distribution and velocity at (Ma, 0, 0). It is used to compare different boundary conditions with regards to their reflecting the pressure wave into the fluid domain.
+
+To get the results, run
+
+```
+make
+for boundaryCondition in 0 1 2 3
+do
+./gausspulse3d --boundaryCondition $boundaryCondition
+done
+python ./l2plot.py
+```
+
+NOTE: You need matplotlib and numpy for the python plots.

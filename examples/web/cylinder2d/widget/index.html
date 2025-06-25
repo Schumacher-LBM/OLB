@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta content="width=device-width, initial-scale=1" name="viewport">
+  <title>OpenLB Widget</title>
+  <link href="https://fonts.googleapis.com" rel="preconnect">
+  <link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;1,400;1,500&display=swap"
+        rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined"
+        rel="stylesheet">
+	<!--    <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Rounded" rel="stylesheet">-->
+	<!--    <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Sharp" rel="stylesheet">-->
+  <link href="./styles/style.css" rel="stylesheet">
+  <link href="./md3/theme/theme.css" rel="stylesheet">
+</head>
+<body class="surface">
+<div class="container surface">
+  <md-elevation></md-elevation>
+	<!--    -->
+  <div class="panel-wrapper">
+    <div class="panel panel-output">
+      <div>
+        <div class="input">
+          <md-outlined-text-field aria-label="Number Input" id="output-time"
+                                  label="Simulation Time" readOnly
+                                  suffix-text="s" tabindex="-1" value="0">
+          </md-outlined-text-field>
+        </div>
+        <div class="input">
+          <md-outlined-text-field aria-label="Number Input" id="output-mlups"
+                                  label="Performance" readOnly
+                                  suffix-text="MLUPs" tabindex="-1" value="0">
+          </md-outlined-text-field>
+        </div>
+      </div>
+      <div class="button-div">
+        <div class="button-play-pause">
+          <md-filled-button id="button-play">Play
+            <svg slot="icon" viewBox="0 -960 960 960"
+                 xmlns="http://www.w3.org/2000/svg">
+              <path d="M320-200v-560l440 280-440 280Z"/>
+            </svg>
+          </md-filled-button>
+          <md-filled-button id="button-pause">Pause
+            <svg slot="icon" viewBox="0 -960 960 960"
+                 xmlns="http://www.w3.org/2000/svg">
+              <path d="M560-200v-560h160v560H560Zm-320 0v-560h160v560H240Z"/>
+            </svg>
+          </md-filled-button>
+        </div>
+        <md-outlined-button disabled id="button-stop">Stop
+          <svg slot="icon" viewBox="0 -960 960 960"
+               xmlns="http://www.w3.org/2000/svg">
+            <path d="M240-240v-480h480v480H240Z"/>
+          </svg>
+        </md-outlined-button>
+      </div>
+    </div>
+	  <!--    -->
+    <div class="divider vertical-divider" style="grid-column: 2"></div>
+    <md-divider class="margin-divider horizontal-divider" role="separator"
+                style="grid-row: 2"
+                tabindex="-1"
+    ></md-divider>
+	  <!--    -->
+    <div aria-labelledby="values-title" class="radio-wrapper" role="radiogroup">
+      <div class="title-medium primary-text" id="values-title">Output:</div>
+      <div class="radio-wrapper-inner">
+        <div class="radio">
+          <md-radio checked id="radio-velocity" name="values"
+                    value="velocity"></md-radio>
+          <label class="label-large radio-label on-background-text"
+                 for="radio-velocity">Velocity</label>
+        </div>
+        <div class="radio">
+          <md-radio id="radio-pressure" name="values"
+                    value="pressure"></md-radio>
+          <label class="label-large radio-label on-background-text"
+                 for="radio-pressure">Pressure</label>
+        </div>
+      </div>
+    </div>
+	  <!--    -->
+    <div class="divider vertical-divider" style="grid-column: 4"></div>
+    <md-divider class="margin-divider horizontal-divider" role="separator"
+                style="grid-row: 4"
+                tabindex="-1"></md-divider>
+	  <!--    -->
+    <div class="panel panel-input">
+      <div class="slider-wrapper">
+        <div class="slider">
+          <div class="title-medium primary-text">Re:</div>
+          <md-slider id="slider-re" labeled max="1000" min="10" step="10"
+                     value="20"></md-slider>
+        </div>
+        <div class="slider">
+          <div class="title-medium primary-text">N:</div>
+          <md-slider id="slider-n" labeled max="50" min="2" step="1"
+                     value="10"></md-slider>
+        </div>
+      </div>
+      <div class="button-div">
+        <md-outlined-button disabled id="button-reset">Reset
+          <svg slot="icon" viewBox="0 -960 960 960"
+               xmlns="http://www.w3.org/2000/svg">
+            <path d="M480-80q-75 0-140.5-28.5t-114-77q-48.5-48.5-77-114T120-440h80q0 117 81.5 198.5T480-160q117 0 198.5-81.5T760-440q0-117-81.5-198.5T480-720h-6l62 62-56 58-160-160 160-160 56 58-62 62h6q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-440q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-80Z"/>
+          </svg>
+        </md-outlined-button>
+      </div>
+    </div>
+  </div>
+	<!--    -->
+  <md-divider class="margin-divider" role="separator"
+              tabindex="-1"></md-divider>
+	<!--    -->
+  <canvas class="background " id="canvas"></canvas>
+	<!--    -->
+  <md-divider class="margin-divider" role="separator"
+              tabindex="-1"></md-divider>
+	<!--    -->
+  <div class="legend-wrapper">
+    <img alt="legend" id="legend" src="./gradients/gradient_wave_1.png">
+	  <!-- Gradient Menu: Note the position: relative style selected-->
+    <span style="position: relative">
+      <md-outlined-icon-button id="gradient-anchor">
+        <md-icon>more_vert</md-icon>
+      </md-outlined-icon-button>
+	    <!-- Items are set from gradients via JS-->
+      <md-menu anchor="gradient-anchor" id="gradient-menu"></md-menu>
+    </span>
+  </div>
+	<!--    -->
+	<!-- absolute position bottom left -->
+  <md-icon-button id="dialog-anchor">
+    <md-icon class="primary-text info-icon">info</md-icon>
+    <md-icon class="inverse-primary-text info-icon-inverse">info</md-icon>
+  </md-icon-button>
+  <md-dialog id="dialog">
+    <div class="background" slot="headline">
+      OpenLB Simulation… in your browser!
+    </div>
+    <div class="background" slot="content">
+      <p>This widget allows you to parameterize and run a basic OpenLB simulation
+        without downloading and compiling anything. It is a direct
+        <a href="https://emscripten.org/">emscripten</a>-based port of OpenLB's
+        two-dimensional cylinder flow <code>examples/laminar/cylinder2d</code> following
+        the common reference case by <a
+					      href="https://doi.org/10.1007/978-3-322-89849-4_39">Schäfer and
+          Turek</a>.</p>
+      <p>You can modify the Reynolds number, change the resolution and toggle
+        between velocity magnitude and pressure displays in various color maps.</p>
+      <p>The simulation runs in single-threaded JavaScript and the resulting
+        performance in millions of cell updates per second (MLUPs) is displayed
+        alongside the flow field.</p>
+      <p>Implementation: Pascal Sitter and Adrian Kummerländer</p>
+    </div>
+    <div class="background" slot="actions">
+      <md-text-button id="dialog-button">Close</md-text-button>
+    </div>
+  </md-dialog>
+</div>
+
+<!-- order matters -->
+<script src="./js/settings.js"></script>
+<script src="./js/generated/cylinder2d.js"></script>
+<script src="./md3/js/md3.js"></script>
+
+<script src="./js/simulation.js"></script>
+<script src="./js/input.js"></script>
+<script src="./js/output.js"></script>
+
+<script src="./js/menu.js"></script>
+<script src="./js/dialog.js"></script>
+<script src="./js/canvas.js"></script>
+<script src="./js/legend.js"></script>
+
+</body>
+</html>

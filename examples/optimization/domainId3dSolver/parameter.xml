@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Param>
+  <Application>
+    <Name> domainIdentification3d </Name>
+    <dim> 3 </dim>
+    <OlbDir> ../../../ </OlbDir>
+
+    <Discretization>
+      <Resolution> 20 </Resolution>                           // 104
+      <LatticeRelaxationTime> 0.8 </LatticeRelaxationTime>
+    </Discretization>
+
+    <PhysParameters>
+      <CharPhysLength> 1. </CharPhysLength>
+      <CharPhysVelocity> 1. </CharPhysVelocity>
+      <PhysDensity> 1. </PhysDensity>
+      <CharPhysPressure> 0 </CharPhysPressure>
+      <PhysViscosity> 0.1 </PhysViscosity>
+
+      <PhysMaxTime> 6.0 </PhysMaxTime>
+      <StartUpTime> 1.0 </StartUpTime>
+
+      <Re>    </Re>
+      <charU> </charU>
+      <BoundaryValueUpdateTime> 0.02 </BoundaryValueUpdateTime>
+    </PhysParameters>
+
+    <ConvergenceCheck>
+      <Type> MaxLatticeVelocity </Type>
+      <Interval>.1</Interval>
+      <Residuum>1e-5</Residuum>
+    </ConvergenceCheck>
+
+    <StabilityCheck>
+      <Frequency> 0.06 </Frequency>
+      <ExitMaxU> false </ExitMaxU>
+      <BoundMaxU> 10. </BoundMaxU>
+    </StabilityCheck>
+
+    <Mesh>
+      <IndicatorCuboid3D extend="1.001 1.001 1.001" origin="0 0 0"/>
+      <noCuboidsPerProcess> 1 </noCuboidsPerProcess>
+      <lx> </lx>
+      <ly> </ly>
+      <lz> </lz>
+    </Mesh>
+
+    <OutputName> domainIdentification3d </OutputName>
+
+    <DiscParam>
+      <resolution>  </resolution>
+    </DiscParam>
+
+    <Obstacle>
+      <rMax>  </rMax>
+    </Obstacle>
+  </Application>
+
+  <Optimization>
+    <ControlMaterial> 6 </ControlMaterial>
+    <ObjectiveMaterial> 6 </ObjectiveMaterial>
+    <ReferenceSolution> true </ReferenceSolution>
+
+    <PrimalDynamics> PorousBGK </PrimalDynamics>
+    <DualDynamics> DualPorousBGK </DualDynamics>
+    <DimensionControl> 1200000 </DimensionControl>
+    <FieldDimension> 1 </FieldDimension>
+
+    <RegAlpha> 0.0 </RegAlpha>
+
+    <Algorithm> LBFGS </Algorithm>
+    <L> 20 </L>
+    <Lambda> 1. </Lambda>
+    <MaxIter> 15 </MaxIter>
+    <MaxStepAttempts> 10 </MaxStepAttempts>
+    <Tolerance> 1.e-7 </Tolerance>
+    <FailOnMaxIter> 1 </FailOnMaxIter>
+
+    <Verbose> true </Verbose>
+    <InputFileName> control.dat </InputFileName>
+    <LogFileName> log.txt </LogFileName>
+    <StepCondition> Wolfe </StepCondition>
+    <ControlTolerance> 0 </ControlTolerance>
+    <StartCoefH> 0.0001 </StartCoefH>
+    <VectorBounds> false </VectorBounds>
+
+    <Projection> Sigmoid </Projection>
+    <StartValue> 1e-2 </StartValue>
+    <StartValueType> Permeability </StartValueType>
+
+    <VisualizationGnuplot>
+    <VisualizedParameters>VALUE</VisualizedParameters>
+    </VisualizationGnuplot>
+  </Optimization>
+
+  <Solver>
+    <Type> instationary </Type>
+    <PressureFilter> false </PressureFilter>
+  </Solver>
+
+  <Boundary>
+    <Type> Interp </Type>
+  </Boundary>
+
+  <Output>
+    <MultiOutput> 0 </MultiOutput>
+    <OutputDir> ./tmp/ </OutputDir>
+    <PrintLogConverter> false </PrintLogConverter>
+    <Log>
+      <SaveTime> 10.0 </SaveTime>
+      <VerboseLog> false </VerboseLog>
+    </Log>
+    <Timer>
+      <PrintMode>2</PrintMode>
+    </Timer>
+    <VisualizationGnuplot>
+      <Output> off </Output>
+    </VisualizationGnuplot>
+    <VisualizationVTK>
+      <Output> intervals </Output>
+      <SaveTime>0.1</SaveTime>
+    </VisualizationVTK>
+    <VisualizationImages>
+      <Output> off </Output>
+    </VisualizationImages>
+  </Output>
+
+  <ObjectiveDomain>
+    <IndicatorCuboid3D extend="1.001 1.001 1.001" origin="0 0 0"/> <!--FullInfo -->
+    <!--<IndicatorCuboid3D extend="1 .75 1" origin="0 .25 0"/> ThreeQuarter -->
+    <!--<IndicatorCuboid3D extend="1 .5 1" origin="0 .5 0"/> Half -->
+    <!--<IndicatorCuboid3D extend="1 .25 1" origin="0 .75 0"/> Quarter -->
+    <!--<IndicatorCuboid3D extend=".4001 .4001 .4001" origin=".3 .3 .3"/> Object -->
+
+    <!--<IndicatorCuboid3D extend="1 .25 1" origin="0 .75 0"/> Shadow-->
+    <!--<IndicatorCuboid3D extend="1 1 .25" origin="0 0 .75"/>Upper-->
+    <!--<IndicatorUnion3D>
+      <IndicatorCuboid3D extend="1 .1 1" origin="0 .1 0"/>
+      <IndicatorCuboid3D extend="1 .1 1" origin="0 .8 0"/>
+    </IndicatorUnion3D> TwoSlices -->
+  <!--<IndicatorCuboid3D extend="1 1 0.05" origin="0 0 0.475"/> Plane N40-->
+  </ObjectiveDomain>
+
+  <SimulationObject>
+    <IndicatorCuboid3D extend=".2001 .2001 .2001" origin=".4 .4 .4"/> <!--Cube -->
+    <!--<IndicatorSphere3D center=".5 .5 .5" radius=".1"/> Sphere -->
+    <!--<IndicatorUnion3D>
+      <IndicatorSphere3D center=".45 .5 .5" radius=".05"/>
+      <IndicatorSphere3D center=".55 .5 .5" radius=".05"/>
+    </IndicatorUnion3D> Two_Spheres -->
+    <!--<IndicatorUnion3D>
+      <IndicatorCuboid3D extend=".1 .2 .2" origin=".4 .4 .4"/>
+      <IndicatorCuboid3D extend=".1 .1 .1" origin=".6 .6 .6"/>
+    </IndicatorUnion3D> Cube_and_Cuboid -->
+  </SimulationObject>
+
+  <DesignDomain>
+    <IndicatorCuboid3D extend=".4001 .4001 .4001" origin=".3 .3 .3"/>
+  </DesignDomain>
+
+</Param>

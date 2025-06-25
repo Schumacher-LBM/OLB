@@ -1,0 +1,66 @@
+<!-- certain parameters are read manually in the example -->
+<!-- they are indicated with "read manually in <respective method>". -->
+<!-- The other parameters are read automatically by the unit converter. -->
+<Param>
+  <Application>
+    <Name>cavity2d</Name>
+    <dim>2</dim>
+    <OlbDir>../../</OlbDir> <!-- read manually in main-->
+    <PressureFilter></PressureFilter>
+    <Discretization> <!--two discretization parameters are required for unit converter-->
+      <Resolution>128</Resolution>
+      <LatticeRelaxationTime>0.5384</LatticeRelaxationTime>
+      <PhysDeltaX></PhysDeltaX>
+      <CharLatticeVelocity></CharLatticeVelocity>
+      <PhysDeltaT></PhysDeltaT>
+    </Discretization>
+    <PhysParameters>
+      <PhysMaxTime>100</PhysMaxTime> <!-- read manually in main-->
+      <CharPhysLength>1</CharPhysLength>
+      <CharPhysPressure> 0. </CharPhysPressure>
+      <CharPhysVelocity>1</CharPhysVelocity>
+      <PhysViscosity>0.001</PhysViscosity>
+      <PhysDensity>1</PhysDensity>
+      <StartUpTime></StartUpTime>
+      <BoundaryValueUpdateTime></BoundaryValueUpdateTime>
+    </PhysParameters>
+    <Mesh>
+      <noCuboidsPerProcess></noCuboidsPerProcess>
+    </Mesh>
+    <ConvergenceCheck>
+      <Type></Type>
+      <Interval>1</Interval>
+      <Residuum>1e-3</Residuum>
+    </ConvergenceCheck>
+  </Application>
+  <Output>
+    <OutputDir>./tmp/</OutputDir>  <!-- read manually in main-->
+    <MultiOutput>false</MultiOutput>
+    <PrintLogConverter></PrintLogConverter>
+    <Log>
+      <Filename>cavity2d.log</Filename>
+      <SaveTime>1</SaveTime> <!-- read manually in main-->
+      <VerboseLog></VerboseLog>
+    </Log>
+    <VisualizationVTK>
+      <Output></Output>
+      <Filename>cavity2dvtk</Filename> <!-- read manually in main-->
+      <SaveTime>1</SaveTime> <!-- read manually in main-->
+    </VisualizationVTK>
+    <VisualizationImages>
+      <Output></Output>
+      <Filename>cavity2dimage</Filename> <!-- read manually in main-->
+      <SaveTime>5</SaveTime> <!-- read manually in main-->
+    </VisualizationImages>
+    <VisualizationGnuplot>
+      <Output></Output>
+      <Filename>centerVelocityX</Filename> <!-- read manually in main-->
+      <SaveTime>5</SaveTime> <!-- read manually in main-->
+    </VisualizationGnuplot>
+    <Timer>
+      <PrintMode>0</PrintMode>
+      <PrintSummary>true</PrintSummary> <!--app specific, unused-->
+      <PrintModeSummary>0</PrintModeSummary>
+    </Timer>
+  </Output>
+</Param>

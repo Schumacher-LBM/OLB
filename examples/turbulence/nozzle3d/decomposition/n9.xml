@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<XMLContent>
+  <CuboidDecomposition dimension="3" origin="-0.6666679978370667 -0.388888955116272 -0.388888955116272" extent="732 108 108" deltaR="0.1111111111111111" weight="-1" refinementLevel="0">
+    <Cuboid origin="3.3333320021629333 -0.388888955116272 -0.388888955116272" extent="696 108 108" deltaR="0.1111111111111111" weight="-1" refinementLevel="0"/>
+    <Cuboid origin="-0.6666679978370667 3.611111044883728 3.611111044883728" extent="36 36 36" deltaR="0.1111111111111111" weight="-1" refinementLevel="0"/>
+  </CuboidDecomposition>
+</XMLContent>

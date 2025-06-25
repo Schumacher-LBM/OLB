@@ -1,0 +1,56 @@
+<!-- certain parameters are read manually in the example -->
+<!-- they are indicated with "read manually in <respective method>". -->
+<!-- The other parameters are read automatically by the unit converter. -->
+<Param>
+  <Application>
+    <Name>city3d</Name>
+    <dim>3</dim>
+    <OlbDir>../../</OlbDir> <!-- read manually in main-->
+    <PressureFilter></PressureFilter>
+    <Discretization> <!--two discretization parameters are required for unit converter-->
+      <Resolution>10</Resolution>
+      <LatticeRelaxationTime></LatticeRelaxationTime>
+      <PhysDeltaX></PhysDeltaX>
+      <CharLatticeVelocity>0.04</CharLatticeVelocity>
+      <PhysDeltaT></PhysDeltaT>
+    </Discretization>
+    <PhysParameters>
+      <PhysMaxTime>200</PhysMaxTime> <!-- read manually in main-->
+      <CharPhysLength>10.</CharPhysLength>
+      <CharPhysPressure> 0. </CharPhysPressure>
+      <CharPhysVelocity>18.</CharPhysVelocity>
+      <PhysViscosity>10e-5</PhysViscosity>
+      <PhysDensity>1</PhysDensity>
+      <StartUpTime></StartUpTime>
+      <BoundaryValueUpdateTime></BoundaryValueUpdateTime>
+    </PhysParameters>
+    <Mesh>
+      <noCuboidsPerProcess></noCuboidsPerProcess>
+    </Mesh>
+    <ConvergenceCheck>
+      <Type></Type>
+      <Interval>1</Interval>
+      <Residuum>1e-3</Residuum>
+    </ConvergenceCheck>
+  </Application>
+  <Output>
+    <OutputDir>./tmp/</OutputDir>  <!-- read manually in main-->
+    <MultiOutput>false</MultiOutput>
+    <PrintLogConverter></PrintLogConverter>
+    <VisualizationVTK>
+      <Output></Output>
+      <Filename>city3dvtk</Filename> <!-- read manually in main-->
+      <SaveTime>10</SaveTime> <!-- read manually in main-->
+    </VisualizationVTK>
+    <Log>
+      <Filename>city3d.log</Filename>
+      <SaveTime>0.1</SaveTime> <!-- read manually in main-->
+      <VerboseLog></VerboseLog>
+    </Log>
+    <Timer>
+      <PrintMode>0</PrintMode>
+      <PrintSummary>true</PrintSummary> <!--app specific, unused-->
+      <PrintModeSummary>0</PrintModeSummary>
+    </Timer>
+  </Output>
+</Param>

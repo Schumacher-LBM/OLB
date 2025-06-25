@@ -1,0 +1,64 @@
+<Param>
+  <Application>
+    <Name> testFlow3dSolver </Name>
+    <dim> 3 </dim>
+    <OlbDir> ../../../ </OlbDir>
+    <InitMode> Analytical </InitMode>
+    <Discretization>
+      <Resolution> 21 </Resolution>
+      <CharLatticeVelocity> 0.047619 </CharLatticeVelocity>  // has to be set to 1/ Resolution manually
+    </Discretization>
+    <PhysParameters>
+      <CharPhysLength> 1 </CharPhysLength>
+      <CharPhysVelocity> 1 </CharPhysVelocity>
+      <PhysDensity> 1. </PhysDensity> <!-- 1200.0 -->
+      <CharPhysPressure> 0. </CharPhysPressure> <!-- 0.0 -->
+      <PhysViscosity> 0.1 </PhysViscosity> <!-- 0.01 -->
+      <PhysMaxTime> 6.0 </PhysMaxTime> <!-- 8.0 -->
+      <StartUpTime> 4.0 </StartUpTime> <!-- 5.0 -->
+      <BoundaryValueUpdateTime> 0.001 </BoundaryValueUpdateTime>
+    </PhysParameters>
+    <Mesh>
+      <noCuboidsPerProcess> 1  </noCuboidsPerProcess>
+      <Overlap> 3 </Overlap>
+    </Mesh>
+    <BoundaryCondition> interpolated </BoundaryCondition>
+    <Domain> sphere </Domain>
+    <PressureFilter> true </PressureFilter>
+
+  </Application>
+
+  <Output>
+    <OutputDir> ./tmp/ </OutputDir>
+    <PrintLogConverter> false </PrintLogConverter>
+
+    <Log>
+      <SaveTime> 2.5  </SaveTime>
+      <VerboseLog> false </VerboseLog>
+    </Log>
+
+    <VisualizationVTK>
+      <Output> intervals </Output>
+      <SaveTime> 0.5  </SaveTime>
+      <Filename> testflow </Filename>
+    </VisualizationVTK>
+
+    <VisualizationImages>
+      <Output> off </Output>
+      <SaveTime> 40000.  </SaveTime>
+    </VisualizationImages>
+
+    <VisualizationGnuplot>
+      <Output> off </Output>
+    </VisualizationGnuplot>
+
+    <Timer>
+      <PrintMode>0</PrintMode>
+      <SkipType>physical time</SkipType>
+      <PhysTime>8.</PhysTime>
+      <PrintSummary>1</PrintSummary>
+    </Timer>
+
+  </Output>
+
+</Param>

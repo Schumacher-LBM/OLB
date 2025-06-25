@@ -1,0 +1,97 @@
+<Param>
+  <Application>
+    <Name> pipeBend2d </Name>
+    <dim> 2 </dim>
+    <OlbDir> ../../../ </OlbDir>
+    <Discretization>
+      <Resolution> 20 </Resolution>
+      <LatticeRelaxationTime> 0.525 </LatticeRelaxationTime>
+    </Discretization>
+    <PhysParameters>
+      <CharPhysLength> 0.5 </CharPhysLength>
+      <CharPhysVelocity> 0.06 </CharPhysVelocity>
+      <PhysDensity> 1. </PhysDensity>
+      <CharPhysPressure> 0. </CharPhysPressure>
+      <PhysViscosity> 0.001 </PhysViscosity>
+      <PhysMaxTime> 80. </PhysMaxTime>
+      <StartUpTime> 20. </StartUpTime>
+      <BoundaryValueUpdateTime> 0.1 </BoundaryValueUpdateTime>
+    </PhysParameters>
+    <Mesh>
+      <noCuboidsPerProcess> 1  </noCuboidsPerProcess>
+      <Overlap> 3 </Overlap>
+    </Mesh>
+    <PressureFilter> false </PressureFilter>
+
+    <StabilityCheck>
+      <Frequency> 1000 </Frequency>
+      <ExitMaxU> false </ExitMaxU>
+      <BoundMaxU> 10000 </BoundMaxU>
+    </StabilityCheck>
+  </Application>
+
+  <Optimization>
+    <DimensionControl> 1200 </DimensionControl>
+    <FieldDimension> 1 </FieldDimension>
+
+    <RegAlpha> 0.003 </RegAlpha>
+
+    <Algorithm> LBFGS </Algorithm>
+    <L> 20 </L>
+    <Lambda> 1. </Lambda>
+    <MaxIter> 50 </MaxIter>                                   // 100
+    <MaxStepAttempts> 20 </MaxStepAttempts>
+    <Tolerance> 1.e-10 </Tolerance>
+    <FailOnMaxIter> 1 </FailOnMaxIter>
+
+    <Verbose> true </Verbose>
+    <InputFileName> control.dat </InputFileName>
+    <LogFileName> log.txt </LogFileName>
+    <StepCondition> Wolfe </StepCondition>
+    <ControlTolerance> 0 </ControlTolerance>
+    <StartCoefH> 0.0001 </StartCoefH>
+    <VectorBounds> false </VectorBounds>
+
+    <Projection> Sigmoid </Projection>
+    <StartValue> 1.5e-05 </StartValue>
+    <StartValueType> Permeability </StartValueType>
+
+    <VisualizationGnuplot>
+    <VisualizedParameters>VALUE</VisualizedParameters>
+    </VisualizationGnuplot>
+  </Optimization>
+
+  <Output>
+    <OutputDir> ./tmp/ </OutputDir>
+    <PrintLogConverter> false </PrintLogConverter>
+
+    <Log>
+      <SaveTime> 50. </SaveTime>
+      <VerboseLog> false </VerboseLog>
+    </Log>
+
+    <VisualizationVTK>
+      <Output> final </Output>
+      <SaveTime> 20. </SaveTime>
+      <Filename> pipeBend2d </Filename>
+    </VisualizationVTK>
+
+    <VisualizationImages>
+      <Output> off </Output>
+      <SaveTime> 40000000.  </SaveTime>
+    </VisualizationImages>
+
+    <VisualizationGnuplot>
+      <Output> off </Output>
+    </VisualizationGnuplot>
+
+    <Timer>
+      <PrintMode>0</PrintMode>
+      <SkipType>physical time</SkipType>
+      <PhysTime>50.</PhysTime>
+      <PrintSummary>1</PrintSummary>
+    </Timer>
+
+  </Output>
+
+</Param>

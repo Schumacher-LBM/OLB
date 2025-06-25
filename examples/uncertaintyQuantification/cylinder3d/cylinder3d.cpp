@@ -1,0 +1,261 @@
+/*  Lattice Boltzmann sample, written in C++, using the OpenLB
+ *  library
+ *
+ *  Copyright (C) 2025 Mathias J. Krause, Thomas Henn, Tim Dornieden,
+ *                      Mingliang Zhong, Stephan Simonis
+ *  E-mail contact: info@openlb.net
+ *  The most recent release of OpenLB can be downloaded at
+ *  <http://www.openlb.net/>
+ *
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public License
+ *  as published by the Free Software Foundation; either version 2
+ *  of the License, or (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public
+ *  License along with this program; if not, write to the Free
+ *  Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ *  Boston, MA  02110-1301, USA.
+ */
+
+/* cylinder3d.cpp:
+ * This example examines a steady flow past a cylinder placed in a channel,
+ * where the inlet velocity is uncertain. Monte Carlo sampling and
+ * stochastic collocation are used to quantify how this boundary
+ * uncertainty affects the flow field.
+ *
+ * where
+ *   - order is the order for the stochastic collocation (if used),
+ *   - nq is the number of quadrature points (or samples),
+ *   - resolution is the grid resolution.
+ */
+
+
+#include "cylinder3d.h"
+
+// Comment out or enable one of the following if needed:
+// #define MonteCarloSampling
+// #define quasiMonteCarloSampling
+#define stochasticCollocationMethod
+
+/**
+ * @brief UQ (Uncertainty Quantification) parameter setup:
+ *
+ * 1) Monte Carlo Sampling (Uncomment #define MonteCarloSampling):
+ *    - Uses random draws (nq samples) from the specified distributions.
+ *    - The number of samples nq can be set as an integer. Increasing nq yields
+ *      more statistically robust results at higher computational cost.
+ *    - Convergence Rate:
+ *      - The Monte Carlo error typically decreases on the order of 1/sqrt(nq).
+ *      - Consequently, to gain one extra digit of accuracy, the sample size nq must
+ *        increase by about a factor of 100.
+ *    - Example code block:
+ *         int nq = resolution / 3.0;
+ *         unsigned int seed = 123456; // fixed seed for reproducibility
+ *         uq.initializeMonteCarlo(nq, dist, seed);
+ *
+ * 2) Stochastic Collocation (Default, #define stochasticCollocationMethod):
+ *    - Implements generalized polynomial chaos (GPC).
+ *    - Configure the polynomial expansion order (orderGPC) and the number
+ *      of quadrature points per dimension (nqPerDim).
+ *    - The total number of samples is (nqPerDim)^(number_of_dimensions).
+ *    - Convergence Rate:
+ *      - For smooth problems, polynomial-based methods like GPC can achieve
+ *        exponential (spectral) convergence as the polynomial order is increased.
+ *      - However, increasing orderGPC or nqPerDim grows the number of simulations
+ *        rapidly, especially in high-dimensional parameter spaces.
+ *    - Example code block:
+ *         int orderGPC = 2;  // polynomial chaos order
+ *         int nqPerDim = 3;  // quadrature points per dimension
+ *         uq.initializeGPC(orderGPC, nqPerDim, dist);
+ *
+ * Adjust these parameters according to the desired accuracy and computational
+ * resources. Higher order or more samples generally capture broader variations
+ * but increase runtime.
+ */
+
+
+/**
+  * @brief Helper function to create a directory (with '-p' for recursive creation).
+  *        Logs a warning if directory creation fails.
+  *
+  * @param directory Path of the directory to create.
+  * @param clout     Output stream for logging.
+  */
+void createDirectory(const std::string& directory, OstreamManager& clout) {
+  std::string command = "mkdir -p " + directory;
+  int result = std::system(command.c_str());
+  if (result != 0) {
+    clout << "Warning: Failed to create directory " << directory
+          << " (return code = " << result << ")" << std::endl;
+  } else {
+    clout << "Directory created (or already exists): " << directory << std::endl;
+  }
+}
+
+void saveDragCoefficients(int resolution, T coeff) {
+  std::string filename;
+
+#ifdef MonteCarloSampling
+  filename = "drag_nx_" + std::to_string(resolution) + "_mc.txt";
+#elif defined(quasiMonteCarloSampling)
+  filename = "drag_nx_" + std::to_string(resolution) + "_qmc.txt";
+#elif defined(stochasticCollocationMethod)
+  filename = "drag_nx_" + std::to_string(resolution) + "_sc.txt";
+#else
+  std::cerr << "Error: No sampling method defined!" << std::endl;
+  return;
+#endif
+
+  std::ofstream outFile(filename, std::ios::app);
+  if (!outFile) {
+      std::cerr << "Error: Unable to open file for writing: " << filename << std::endl;
+      return;
+  }
+
+  outFile << std::fixed << std::setprecision(20) << coeff << "\n";
+  outFile.close();
+}
+
+extern const T Re = 20.0;       // Reynolds number
+extern const T maxPhysT = 16.0; // max. simulation time in s, SI unit
+
+int main( int argc, char* argv[] )
+{
+  // === 1st Step: Initialization ===
+  initialize(&argc, &argv);
+  OstreamManager clout(std::cout, "main");
+
+  /// Simulation Parameter
+  int resolution = 10;
+  T physVelocity = 0.2;   // Characteristic inlet velocity
+  T dx           = 0.1 / resolution;
+
+  // === 3rd Step: Uncertainty Quantification Setup ===
+  // We define the uncertain inlet velocity in [0.8*u0, 1.2*u0] as an example
+  bool   exportResults     = true;            // Whether to write VTI/VTM output
+
+  // Create main folder to store results
+  std::string foldPath = "uq/res_" + std::to_string(resolution) + "/";
+  createDirectory(foldPath, clout);
+
+  // === 3rd Step: Uncertainty Quantification Setup ===
+  // We define the uncertain inlet velocity in [0.8*u0, 1.2*u0] as an example
+  auto dist = uniform(0.8 * physVelocity, 1.2 * physVelocity);
+
+#ifdef MonteCarloSampling
+  // Monte Carlo sampling
+  int nq = 10; // number of samples
+  UncertaintyQuantification<T> uq(UQMethod::MonteCarlo);
+  unsigned int seed = 123456; // fixed seed for reproducibility
+  uq.initializeMonteCarlo(nq, dist, seed);
+#elif defined(quasiMonteCarloSampling)
+  // Quasi-Monte Carlo sampling
+  int nq = 10; // number of samples
+  UncertaintyQuantification<T> uq(UQMethod::QuasiMonteCarlo);
+  uq.initializeQuasiMonteCarlo(nq, dist, "../../../src/uq/new-joe-kuo-6.21201", GeneratorType::Halton);
+#elif defined(stochasticCollocationMethod)
+  // Generalized Polynomial Chaos (Stochastic Collocation)
+  UncertaintyQuantification<T> uq(UQMethod::GPC);
+  int orderGPC = 2;
+  int nqPerDim = 5; // nqPerDim is recommended to be 2*orderGPC+1
+  uq.initializeGPC(orderGPC, nqPerDim, dist);
+#endif
+
+  // Retrieve the actual sample points
+  auto samples = uq.getSamplingPoints();
+
+  // === 4th Step: Geometry Setup ===
+  STLreader<T> stlReader( "../../laminar/cylinder3d/cylinder3d.stl", dx, 0.001);
+  IndicatorLayer3D<T> extendedDomain( stlReader, dx );
+
+  // Instantiation of a cuboidDecomposition with weights
+#ifdef PARALLEL_MODE_MPI
+  const int noOfCuboids = singleton::mpi().getSize();
+#else
+  const int noOfCuboids = 7;
+#endif
+  CuboidDecomposition3D<T> cuboidDecomposition( extendedDomain, dx, noOfCuboids );
+
+  // Instantiation of a loadBalancer
+  HeuristicLoadBalancer<T> loadBalancer( cuboidDecomposition );
+
+  // Instantiation of a superGeometry
+  SuperGeometry<T,3> superGeometry( cuboidDecomposition, loadBalancer );
+
+  // === 5th Step: Loop over samples and run simulations ===
+  // Store drag coefficients for each sample
+  std::vector<T> dragCoefficients(samples.size(), 0.0);
+
+  clout << "Starting simulation over " << samples.size() << " samples." << std::endl;
+
+  for (size_t n = 0; n < samples.size(); ++n) {
+    if (exportResults) {
+    // Create subfolder for this sample
+      std::string subFoldPath = foldPath + std::to_string(n) + "/tmp/";
+      createDirectory(subFoldPath, clout);
+      // Redirect output to this sample's folder
+      singleton::directories().setOutputDir(subFoldPath);
+    }
+
+    // Run the cylinder simulation with the given inlet velocity
+    dragCoefficients[n] = simulateCylinder(resolution, samples[n][0], exportResults );
+
+    if (singleton::mpi().isMainProcessor()) {
+      saveDragCoefficients(resolution, dragCoefficients[n]);
+    }
+  }
+
+  // === 6th Step: Post-processing ===
+  #ifdef MonteCarloSampling
+  clout << std::setprecision(20) << std::fixed;
+  clout << "Drag coefficients statistics:\n";
+
+  std::vector<int> sample_sizes = {10, 20, 40, 80};
+
+  for (int n : sample_sizes) {
+    if (n <= dragCoefficients.size()) {
+      std::vector<T> subset(dragCoefficients.begin(), dragCoefficients.begin() + n);
+      clout << "  For first " << n << " samples:\n";
+      clout << "    mean = " << uq.mean(subset) << "\n";
+      clout << "    std  = " << uq.std(subset) << std::endl;
+    }
+  }
+  #elif defined(quasiMonteCarloSampling)
+    clout << std::setprecision(20) << std::fixed;
+    clout << "Drag coefficients statistics:\n";
+
+    std::vector<int> sample_sizes = {10, 20, 40, 80};
+
+    for (int n : sample_sizes) {
+      if (n <= dragCoefficients.size()) {
+        std::vector<T> subset(dragCoefficients.begin(), dragCoefficients.begin() + n);
+        clout << "  For first " << n << " samples:\n";
+        clout << "    mean = " << uq.mean(subset) << "\n";
+        clout << "    std  = " << uq.std(subset) << std::endl;
+      }
+    }
+  #elif defined(stochasticCollocationMethod)
+    clout << std::setprecision(20) << std::fixed;
+    clout << "Drag coefficients:" ;
+    clout << "  mean: " << uq.mean(dragCoefficients) << ",";
+    clout << "  std: " << uq.std(dragCoefficients) << std::endl;
+  #endif
+
+   // Optionally compute mean and std fields and write VTI output
+   // (only if 'exportResults' is set to true)
+  if (exportResults) {
+    clout << "Computing mean and std fields..." << std::endl;
+    computeMeanAndStdAndWriteVTI<T, DESCRIPTOR>(
+      uq, foldPath, "cylinder3d", "physVelocity",
+      cuboidDecomposition, superGeometry
+    );
+  }
+
+  return 0;
+}

@@ -1,0 +1,9 @@
+<init>
+  <overlapCheck particleParticle="0" />
+  <normalisation method="0" />
+</init>
+
+<mesh>
+  <general numParticles="1" file="sph_ico_1280.msh" radius="5" />
+  <physics kV="0" kA="0" kalpha="0.0111111" kS="0.0111111" kB="0" />
+</mesh>

@@ -1,0 +1,66 @@
+<Param>
+  <Application>
+    <Name>cavity2d</Name>
+    <dim>2</dim>
+    <OlbDir>../../</OlbDir>
+    <PressureFilter></PressureFilter>
+    <Discretization> <!--two discretization parameters are required for unit converter-->
+      <Resolution>128</Resolution>
+      <LatticeRelaxationTime>0.5384</LatticeRelaxationTime>
+      <PhysDeltaX></PhysDeltaX>
+      <CharLatticeVelocity></CharLatticeVelocity>
+      <PhysDeltaT></PhysDeltaT>
+    </Discretization>
+    <PhysParameters>
+      <PhysMaxTime>100</PhysMaxTime>
+      <CharPhysLength>1</CharPhysLength>
+      <CharPhysPressure> 1. </CharPhysPressure>
+      <CharPhysVelocity>1</CharPhysVelocity>
+      <PhysViscosity>0.001</PhysViscosity>
+      <PhysDensity>1</PhysDensity>
+      <StartUpTime></StartUpTime>
+      <BoundaryValueUpdateTime> 1 </BoundaryValueUpdateTime>
+    </PhysParameters>
+    <Mesh>
+      <noCuboidsPerProcess> 1 </noCuboidsPerProcess>
+    </Mesh>
+    <ConvergenceCheck>
+      <Type>AverageEnergy</Type>
+      <Interval>1</Interval>
+      <Residuum>1e-3</Residuum>
+    </ConvergenceCheck>
+    <StabilityCheck>
+      <Frequency> 1. </Frequency>
+      <ExitMaxU> false </ExitMaxU>
+      <BoundMaxU> 0.3 </BoundMaxU>
+    </StabilityCheck>
+  </Application>
+  <Output>
+    <OutputDir>./tmp/</OutputDir>
+    <MultiOutput>false</MultiOutput>
+    <PrintLogConverter></PrintLogConverter>
+    <Log>
+      <VerboseLog> true </VerboseLog>
+      <Filename>cavity2d.log</Filename>
+      <SaveTime>1</SaveTime>
+    </Log>
+    <VisualizationGnuplot>
+      <Output> intervals </Output>
+      <Filename>centerVelocityX</Filename>
+      <SaveTime>5</SaveTime>
+    </VisualizationGnuplot>
+    <VisualizationImages>
+      <Output> intervals </Output>
+      <Filename>cavity2d</Filename>
+      <SaveTime>5</SaveTime>
+    </VisualizationImages>
+    <VisualizationVTK>
+      <Output> intervals </Output>
+      <Filename>cavity2d</Filename>
+      <SaveTime>1</SaveTime>
+    </VisualizationVTK>
+    <Timer>
+      <PrintMode>0</PrintMode>
+    </Timer>
+  </Output>
+</Param>
