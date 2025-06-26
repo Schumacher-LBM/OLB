@@ -2,10 +2,6 @@
 /*Notiz:
 Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. Die Durchführung benötigt viel Zeit und ausgegeben wird ein Würfel, der auf 4 Seiten von innen nach außen eine Druckerhöhung erfährt. Die Ergebnisse sind nicht wie erwartet, aber ein erster Schritt.*/
 
-
-
-
-
 /*  Lattice Boltzmann sample, written in C++, using the OpenLB
  *  library
  *
@@ -40,7 +36,7 @@ const T physViscosity     = 0.001;        // kinetic viscosity of fluid [m*m/s]
 const T physDensity       = 1.0;         // fluid density [kg/(m*m*m)]
 const T physMaxT          = 0.5;        // maximal simulation time [s]
 
-typedef enum { eternal, periodic, local, damping } BoundaryType;
+typedef enum { periodic, local } BoundaryType;
 
 
 // Stores geometry information in form of material numbers
@@ -57,45 +53,16 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
 
   switch (boundarytype) {
   // eternal and damping: 3 is the actual fluid; periodic: 1 is the fluid
-  case eternal:
-  case damping:
-    superGeometry.rename(2, 3, domainFluid);
   case periodic:
     superGeometry.rename(2, 1);
     break;
   case local: {
-    superGeometry.rename(2, 1, {1, 1, 1});
+    superGeometry.rename(2, 1);
+    Vector<T,3> center(0.5, 0.5,0.5); // Zentrum der Welle
 
-    // Set material number for inflow
-    Vector<T, ndim> origin = superGeometry.getStatistics().getMinPhysR(2) - dx;
-    Vector<T, ndim> extend =
-        superGeometry.getStatistics().getMaxPhysR(2) - superGeometry.getStatistics().getMinPhysR(2) + 2 * dx;
-    extend[0] = 2 * dx;
-    IndicatorCuboid3D<T> inflow(extend, origin);
-    superGeometry.rename(2, 4, 1, inflow);
-
-    // Set material number for outflow
-    origin[0] = superGeometry.getStatistics().getMaxPhysR(2)[0] - dx;
-    IndicatorCuboid3D<T> outflow(extend, origin);
-    superGeometry.rename(2, 5, 1, outflow);
-
-    origin    = superGeometry.getStatistics().getMinPhysR(2) - dx;
-    extend    = superGeometry.getStatistics().getMaxPhysR(2) - superGeometry.getStatistics().getMinPhysR(2) + 2 * dx;
-    extend[1] = 2 * dx;
-    IndicatorCuboid3D<T> bottom(extend, origin);
-    superGeometry.rename(2, 6, 1, bottom);
-    origin[1] = superGeometry.getStatistics().getMaxPhysR(2)[1] - dx;
-    IndicatorCuboid3D<T> top(extend, origin);
-    superGeometry.rename(2, 6, 1, top);
-
-    origin    = superGeometry.getStatistics().getMinPhysR(2) - dx;
-    extend    = superGeometry.getStatistics().getMaxPhysR(2) - superGeometry.getStatistics().getMinPhysR(2) + 2 * dx;
-    extend[2] = 2 * dx;
-    IndicatorCuboid3D<T> front(extend, origin);
-    superGeometry.rename(2, 6, 1, front);
-    origin[2] = superGeometry.getStatistics().getMaxPhysR(2)[2] - dx;
-    IndicatorCuboid3D<T> back(extend, origin);
-    superGeometry.rename(2, 6, 1, back);
+    IndicatorSphere3D<T> pointSource(center, dx);
+    superGeometry.rename(1,3,pointSource);
+    //superGeometry.rename(1,3,1,pointSource);
     break;
   }
   }
@@ -112,26 +79,17 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
   
     // Material=3 --> bulk dynamics
     auto bulkIndicator = superGeometry.getMaterialIndicator(
-        {0, 1, 2, 3}); // for local bcs all around, corners remain at 2, so they are included here
+        {1}); // for local bcs all around, corners remain at 2, so they are included here
     sLattice.defineDynamics<BulkDynamics>(bulkIndicator);
   
     switch (boundarytype) {
-    case eternal:
-    case periodic:
+    case periodic: // Fuer die freie Welle nutzen
+      // TODO: define free wave as function of x[0]
       break;
-    case local:
-      boundary::set<boundary::LocalVelocity>(sLattice, superGeometry, 4);
-      boundary::set<boundary::LocalPressure>(sLattice, superGeometry, 5);
-      boundary::set<boundary::LocalVelocity>(sLattice, superGeometry, 6);
+    case local: // Fuer die erzwungene Welle nutzen
+      boundary::set<boundary::LocalPressure>(sLattice, superGeometry, 3);
       break;
-    case damping:
-      sLattice.defineDynamics<SpongeDynamics>(superGeometry.getMaterialIndicator(1));
-      // === alternatively, set the boundary, which overwrites the dynamics
-      // boundary::set<boundary::SpongeLayer>( sLattice, superGeometry, 1 );
-      break;
-    }
-  
-    
+    }    
   
     // Make the lattice ready for simulation
     sLattice.initialize();
@@ -139,17 +97,13 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
     clout << "Prepare Lattice ... OK" << std::endl;
   }
 
-
-
-
 // Hier werden die Startbedingungen für eine Gausschen Puls definiert
 void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
   SuperLattice<T, DESCRIPTOR>& sLattice,
   std::size_t iT, SuperGeometry<T,ndim>& superGeometry)
 {
-if (iT == 0) {   // Der Puls wird zum Zeitpunkt t=0 definiert
 
-auto domain = superGeometry.getMaterialIndicator({1,2,3}); // Die Materialien werden Fluid (1), gleitfreie Grenzen (2) und Geschiwindigkeit gesetzt (3) Quelle: Handbuch
+auto domain = superGeometry.getMaterialIndicator({3}); // Die Materialien werden Fluid (1), gleitfreie Grenzen (2) und Geschiwindigkeit gesetzt (3) Quelle: Handbuch
 
 
 // Verortung der Schallquelle
@@ -157,24 +111,25 @@ Vector<T,3> center(0.5, 0.5,0.5); // Zentrum der Welle
 
 //T radius = 0.05; // Wird momentan noch nicht genutzt
 //Schallquelle
-
+T t = iT * converter.getDeltaT();
 SchallwelleDru<3,T> SchallwelleDru(1e-3,0.314,0., center);//SchallwelleDruck(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
-SchallwelleGesch<3,T> SchallwelleGeschwind(1e-3,0.314, 0. , 1., 0.577, center); // T amplitude, T Wellenzahl, T phase,T rho0,T Geschwindigkeit,Vector<T, ndim> x0 = Vector<T,  ndim>(0.))
+//SchallwelleGesch<3,T> SchallwelleGeschwind(1e-3,0.314, 0. , 1., 0.577, center); // T amplitude, T Wellenzahl, T phase,T rho0,T Geschwindigkeit,Vector<T, ndim> x0 = Vector<T,  ndim>(0.))
+SchallwelleDru.setTime(t);
+// TODO: rhoF durch std::sin(iT)
 
-AnalyticalConst3D<T,T> rhoF(1);       // Definiert rho auf 1
+AnalyticalConst3D<T,T> rhoF(SchallwelleDru);       // Definiert rho auf 1
 AnalyticalConst3D<T,T> uWall(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
 AnalyticalConst3D<T,T> uLid(0, 0,0);    // Definiert die Geschwindigkeit an der lid auf eine Geschwindigkeit in X Richtung und 0 in Y Richtung
 
 // Initialize populations to equilibrium state
-sLattice.iniEquilibrium(domain, SchallwelleDru, uWall);
-sLattice.defineRhoU(domain, SchallwelleDru, uLid);
+//sLattice.iniEquilibrium(domain, SchallwelleDru, uWall);
+sLattice.defineRho(domain, SchallwelleDru);
 
 
 // Assign the non-zero velocity to the lid
 // sLattice.defineRho(superGeometry,densityWave,uWall);
 //sLattice.defineU(superGeometry, 3, uLid);
 sLattice.initialize();
-}
 }
 
 void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T, DESCRIPTOR> const& converter,
@@ -251,7 +206,7 @@ int main(int argc, char* argv[])
   converter.print();
 
   // === 2nd Step: Prepare Geometry ===
-  BoundaryType boundarytype = periodic;
+  BoundaryType boundarytype = local;
   Vector<T,ndim> originFluid(0, 0, 0);
   Vector<T,ndim> extendFluid(physLength, physLength, physLength);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
@@ -260,7 +215,7 @@ int main(int argc, char* argv[])
   Vector<T,ndim> origin{0, 0, 0};
   IndicatorCuboid3D<T> cuboid(extend, origin);
   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
-  cuboidDecomposition.setPeriodicity({true,true});
+  cuboidDecomposition.setPeriodicity({true,true,true});
   HeuristicLoadBalancer<T> loadBalancer(cuboidDecomposition);
   
   SuperGeometry<T,ndim> superGeometry(cuboidDecomposition, loadBalancer);
@@ -284,7 +239,7 @@ int main(int argc, char* argv[])
     boundarytype, dampingDepthPU, lengthDomain, dampingStrength);
 
   // === 4th Step: Main Loop with Timer ===
-  const std::size_t iTmax = converter.getLatticeTime(physMaxT);
+  const std::size_t iTmax = 10;//converter.getLatticeTime(physMaxT);
   util::Timer<T> timer(iTmax, superGeometry.getStatistics().getNvoxel());
   timer.start();
 

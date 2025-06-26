@@ -52,35 +52,32 @@ namespace olb {
 
 
 
-
-
-
   // // Meine Loesung. Funktioniert nicht wie gewuenscht  
-        template <unsigned ndim, typename T>
-        class SchallwelleDru : public AnalyticalF<ndim, T, T> 
-        {
-    protected:
+    //     template <unsigned ndim, typename T>
+    //     class SchallwelleDru : public AnalyticalF<ndim, T, T> 
+    //     {
+    // protected:
    
-      T               amplitude;
-      T               Wellenzahl;
-      T               phase;
-    Vector<T, ndim> x0;
-    public:
-      SchallwelleDru(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
-          : AnalyticalF<ndim, T, T>(1)
-          , amplitude(amplitude)
-          , Wellenzahl(Wellenzahl)
-          , phase(phase)
-          ,x0(x0) {};
+    //   T               amplitude;
+    //   T               Wellenzahl;
+    //   T               phase;
+    // Vector<T, ndim> x0;
+    // public:
+    //   SchallwelleDru(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
+    //       : AnalyticalF<ndim, T, T>(1)
+    //       , amplitude(amplitude)
+    //       , Wellenzahl(Wellenzahl)
+    //       , phase(phase)
+    //       ,x0(x0) {};
     
-      bool operator()(T output[], const T input[]) override
-      {
-        //T distance = input[0]-x0[0];
-        T distance = std::sqrt((input[0]-x0[0])* (input[0]-x0[0])+ (input[1]-x0[1])*(input[1]-x0[1])+ (input[2]-x0[2])*(input[2]-x0[2]));
-        output[0] = amplitude * sin(Wellenzahl*distance+ phase);
-        return true;
-      };
-    };
+    //   bool operator()(T output[], const T input[]) override
+    //   {
+    //     //T distance = input[0]-x0[0];
+    //     T distance = std::sqrt((input[0]-x0[0])* (input[0]-x0[0])+ (input[1]-x0[1])*(input[1]-x0[1])+ (input[2]-x0[2])*(input[2]-x0[2]));
+    //     output[0] = amplitude * sin(Wellenzahl*distance+ phase);
+    //     return true;
+    //   };
+    // };
 
     // /*Geschwindigkeitsfeld*/
     //     template <unsigned ndim, typename T>
@@ -119,5 +116,42 @@ namespace olb {
         // };
 
         } // namespace olb
+
+
+
+        template <unsigned ndim, typename T>
+class SchallwelleDru : public AnalyticalF<ndim, T, T> {
+protected:
+    T amplitude;
+    T Wellenzahl;  // = k
+    T omega;       // Kreisfrequenz ω
+    T phase;
+    Vector<T, ndim> x0;
+    T t = 0.0;     // aktuelle Zeit
+
+public:
+    SchallwelleDru(T amplitude, T Wellenzahl, T omega, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
+        : AnalyticalF<ndim, T, T>(1),
+          amplitude(amplitude),
+          Wellenzahl(Wellenzahl),
+          omega(omega),
+          phase(phase),
+          x0(x0) {}
+
+    void setTime(T time) {
+        t = time;
+    }
+
+    bool operator()(T output[], const T input[]) override {
+        T distance = 0.0;
+        for (unsigned i = 0; i < ndim; ++i) {
+            distance += (input[i] - x0[i]) * (input[i] - x0[i]);
+        }
+        distance = std::sqrt(distance);
+        output[0] = amplitude * std::sin(Wellenzahl * distance - omega * t + phase);
+        return true;
+    }
+};
+
     
     #endif
