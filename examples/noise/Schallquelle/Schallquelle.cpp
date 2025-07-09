@@ -117,7 +117,7 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
       Vector<T,3> center(0., 0.,0.); // Zentrum der Welle
 
       //Schallquelle
-      SchallwelleDru<3,T> SchallwelleDru(1e-3,0.314,0.314,0.,0);//SchallwelleDruck(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
+      //SchallwelleDru<3,T> SchallwelleDru(1e-3,0.314,0.314,0.,0);//SchallwelleDruck(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
       //SchallwelleGesch<3,T> SchallwelleGeschwind(1e-3,0.314, 0. , 1., 0.577, center); // T amplitude, T Wellenzahl, T phase,T rho0,T Geschwindigkeit,Vector<T, ndim> x0 = Vector<T,  ndim>(0.))
       // TODO: rhoF durch std::sin(iT)
 
@@ -197,21 +197,41 @@ void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
 
   if (boundarytype == periodic && iT==0) {
     auto domain = superGeometry.getMaterialIndicator({1});
+ 
+
+
     T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
-    T amplitude= 1e-3;
+    T amplitude= 1e-5;
     T wellenzahl=12.5;
     T phase =0.;
-    T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
-
+    //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
+    T time= iT;
+    T geschwindigkeit=1./sqrt(3.);
     
     olb::SchallwelleDru<3, T> schallquelle(amplitude, wellenzahl, kreisfrequenz, phase, time);
-    olb::SchallwelleGesch<3,T> schallquelle_geschwindigkeit(amplitude,wellenzahl,phase,T(1),T(0));
+    olb::SchallwelleGesch<3,T> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,T(1),geschwindigkeit);
     // AnalyticalConst3D<T,T> rhoF(schallquelle);
     AnalyticalConst3D<T,T> uInf(0., 0., 0.);
 
 
-    sLattice.defineRhoU(domain, schallquelle, uInf);
-    sLattice.iniEquilibrium(domain, schallquelle, uInf);
+    // Hier wird die Geschwindigkeit im Terminal ausgegeben
+    Vector<T,3> punkt = {0.5, 0.0, 0.0};  // Punkt, an dem ausgewertet wird
+    T u[3];  // Ergebnis wird hier gespeichert
+    schallquelle_geschwindigkeit(u, punkt.data());
+    std::cout << "[iT=" << iT << ", t=" << time << "s] Geschwindigkeit an (0.5,0,0): "
+    << "u = (" << u[0] << ", " << u[1] << ", " << u[2] << ")\n";
+
+    // Hier wird der Druck im Terminal ausgegeben
+    
+    T p[3];  // Ergebnis wird hier gespeichert
+    schallquelle(p, punkt.data());
+    std::cout << "[iT=" << iT << ", t=" << time << "s] Druck an (0.5,0,0): "
+    << "rho = (" << p[0] << ", " << p[1] << ", " << p[2] << ")\n";
+
+
+
+    sLattice.defineRhoU(domain, schallquelle, schallquelle_geschwindigkeit);
+    sLattice.iniEquilibrium(domain, schallquelle, schallquelle_geschwindigkeit);
   }
 } //setBoundaryValues
 
@@ -262,8 +282,8 @@ void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T,
                       horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
     //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
     //                    false, true, pmin, pmax);
-    linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
-                        diagonal2d, false, false, pmin, pmax);
+    // linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
+    //                     diagonal2d, false, false, pmin, pmax);
 }  // getGraphicalResults
 
 
@@ -276,8 +296,12 @@ int main(int argc, char* argv[])
   // === 1st Step: Initialization ===
   initialize(&argc, &argv);
   CLIreader args(argc, argv);
+  std::string outdir = args.getValueOrFallback<std::string>("--outdir", "");
   size_t maxLatticeT = args.getValueOrFallback("--iTmax", 0); // maximum number of iterations
   
+  if (outdir == "") outdir = "./tmp/";
+  else outdir = "./" + outdir + "/";
+  singleton::directories().setOutputDir(outdir);
   
   OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
 
@@ -294,20 +318,20 @@ int main(int argc, char* argv[])
   converter.print();
 
   // === 2nd Step: Prepare Geometry ===
-  BoundaryType boundarytype = local;
-  Vector<T,ndim> originFluid(-0.5, -0.5, -0.5);
-  Vector<T,ndim> extendFluid(physLength, physLength, physLength);
+  BoundaryType boundarytype = periodic;
+  Vector<T,ndim> originFluid(-0.5, -0.1, -0.1);
+  Vector<T,ndim> extendFluid(physLength, .2, .2);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
 
-  Vector<T,ndim> extend{physLength, physLength, physLength};
-  Vector<T,ndim> origin{-0.5, -0.5, -0.5};
+  Vector<T,ndim> extend{physLength, .2, .2};
+  Vector<T,ndim> origin{-0.5, -0.1, -0.1};
   IndicatorCuboid3D<T> cuboid(extend, origin);
   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
   cuboidDecomposition.setPeriodicity({true,true,true});
   HeuristicLoadBalancer<T> loadBalancer(cuboidDecomposition);
   
   SuperGeometry<T,ndim> superGeometry(cuboidDecomposition, loadBalancer);
-  prepareGeometry(converter, superGeometry,domainFluid,boundarytype);
+  prepareGeometry(converter, superGeometry, domainFluid, boundarytype);
 
   // === 3rd Step: Prepare Lattice ===
   // Vorläufige Loesung mit zufälligen Zahlen. Bitte die richtigen Zahlen noch hinzufuegen!
@@ -326,7 +350,7 @@ int main(int argc, char* argv[])
   // === 4th Step: Main Loop with Timer ===
   std::size_t iTmax = converter.getLatticeTime(physMaxT);
   if ( maxLatticeT != 0 ) iTmax = maxLatticeT;
-  T vtkanzahl=iTmax/10.;
+  T vtkanzahl=iTmax/10.*10.;
   std::size_t iTvtk = int(std::max(iTmax/vtkanzahl, 1.));
   std::size_t iTtimer = int(std::max(iTmax/20., 1.));
   
