@@ -20,8 +20,6 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
 #include "../noiseauxiliary.h"
 #include "SchallwelleGeschwindigkeit.h"
 #include "SchallwelleDruck.h"
-#include "functors/analytical/analyticalF.hh"
-
 
 using namespace olb;
 
@@ -59,29 +57,9 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
 
   switch (boundarytype) {
   // eternal and damping: 3 is the actual fluid; periodic: 1 is the fluid
-  case periodic:{
+  case periodic:
     superGeometry.rename(2, 1);
-      // Fuer die freie Welle nutzen
-      // Verortung der Schallquelle
-      Vector<T,3> center(0., 0.,0.); // Zentrum der Welle
-      T radius = dx;
-      IndicatorSphere3D<T> pointSource(center, radius);
-      superGeometry.rename(1,3,pointSource);
-      //Schallquelle
-      //SchallwelleDru<3,T> SchallwelleDru(1e-3,0.314,0.314,0.,0, center);//SchallwelleDruck(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
-
-      //SchallwelleGesch<3,T> SchallwelleGeschwind(1e-3,0.314, 0. , 1., 0.577, center); // T amplitude, T Wellenzahl, T phase,T rho0,T Geschwindigkeit,Vector<T, ndim> x0 = Vector<T,  ndim>(0.))
-      // TODO: rhoF durch std::sin(iT)
-
-      //AnalyticalConst3D<T,T> rhoF(SchallwelleDru);       // Definiert rho auf 1
-      AnalyticalConst3D<T,T> uWall(0, 0, 0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-      AnalyticalConst3D<T,T> uLid(0, 0, 0);    // Definiert die Geschwindigkeit an der lid auf eine Geschwindigkeit in X Richtung und 0 in Y Richtung
-
-
-
     break;
-  }
-    
   case local: {
     superGeometry.rename(2, 1);
     Vector<T,3> center(0., 0.,0.); // Zentrum der Welle
@@ -117,7 +95,7 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
       Vector<T,3> center(0., 0.,0.); // Zentrum der Welle
 
       //Schallquelle
-      SchallwelleDru<3,T> SchallwelleDru(1e-3,0.314,0.314,0.,0);//SchallwelleDruck(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
+      SchallwelleDru<3,T> SchallwelleDru(1e-3,0.314,0.314,0.,0, center);//SchallwelleDruck(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
       //SchallwelleGesch<3,T> SchallwelleGeschwind(1e-3,0.314, 0. , 1., 0.577, center); // T amplitude, T Wellenzahl, T phase,T rho0,T Geschwindigkeit,Vector<T, ndim> x0 = Vector<T,  ndim>(0.))
       // TODO: rhoF durch std::sin(iT)
 
@@ -141,83 +119,30 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
   }
 
 // Hier werden die Startbedingungen für eine Gausschen Puls definiert
-// void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
-//   SuperLattice<T, DESCRIPTOR>& sLattice,
-//   std::size_t iT, SuperGeometry<T,ndim>& superGeometry)
-// {
-//   auto domain = superGeometry.getMaterialIndicator({3}); // Die Materialien werden Fluid (1), gleitfreie Grenzen (2) und Geschiwindigkeit gesetzt (3) Quelle: Handbuch
-
-  
-//   AnalyticalConst3D<T,T> rhoF(1.+1e-3*std::sin(iT*0.025*std::numbers::pi_v<T>/40));            // assuming T=40 iterations
-//   AnalyticalConst3D<T,T> uInf(0, 0,0);                                                    // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-  
-//   if(iT==0)
-//   {
-//     AnalyticalConst3D<T,T> rhoF(1.);       // Definiert rho auf 1
-//     AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-//   }
-
-//     sLattice.defineRhoU(domain, rhoF, uInf);
-//     // Initialize populations to equilibrium state
-//     sLattice.iniEquilibrium(domain, rhoF, uInf);
-
-//     // ALERNATIVE: define only Rho, find u from dynamics, then iniEqui
-//     //sLattice.defineRho(domain, rhoF);
-//     //auto uInf = sLattice.getU(domain);
-//     //sLattice.iniEquilibrium(domain, rhoF, uInf);
-// }  // setBoundaryValues
-
 void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
   SuperLattice<T, DESCRIPTOR>& sLattice,
-  std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype)
+  std::size_t iT, SuperGeometry<T,ndim>& superGeometry)
 {
+  auto domain = superGeometry.getMaterialIndicator({3}); // Die Materialien werden Fluid (1), gleitfreie Grenzen (2) und Geschiwindigkeit gesetzt (3) Quelle: Handbuch
 
-  if (boundarytype == local) {
-  auto domain = superGeometry.getMaterialIndicator({3});
-
-  // 2 Sinusperioden in 40 Zeitschritten
-  T Kreisfrequenz = 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
-
-  // optionaler Einschwingfaktor
-  T envelope = std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
-
-  // Sinus-Anregung
-  AnalyticalConst3D<T,T> rhoF(1. + envelope * 1e-3 * std::sin(iT * Kreisfrequenz));
-  AnalyticalConst3D<T,T> uInf(0., 0., 0.);
-
+  AnalyticalConst3D<T,T> rhoF(1.+0.1*std::sin(iT*0.025*std::numbers::pi_v<T>/4));       // assuming T=40 iterations
+  AnalyticalConst3D<T,T> uInf(0, 0,0);                                                    // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
+  
   if(iT==0)
-    {
-      AnalyticalConst3D<T,T> rhoF(1.);       // Definiert rho auf 1
-      AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-    }
-
-  sLattice.defineRhoU(domain, rhoF, uInf);
-  sLattice.iniEquilibrium(domain, rhoF, uInf);
+  {
+    AnalyticalConst3D<T,T> rhoF(1.);       // Definiert rho auf 1
+    AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
   }
-
-  if (boundarytype == periodic) {
-    auto domain = superGeometry.getMaterialIndicator({3});
-    T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
-    T amplitude= 1e-3;
-    T wellenzahl=10.;
-    T phase =0.;
-    Vector<T,3> center(0., 0., 0.);
-    T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
-    olb::SchallwelleDru<3, T> schallquelle(amplitude, wellenzahl, kreisfrequenz, phase, time);
-
-    AnalyticalConst3D<T,T> rhoF(schallquelle);
-    AnalyticalConst3D<T,T> uInf(0., 0., 0.);
-
-    if(iT==0)
-    {
-      AnalyticalConst3D<T,T> rhoF(1.);       // Definiert rho auf 1
-      AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-    }
 
     sLattice.defineRhoU(domain, rhoF, uInf);
+    // Initialize populations to equilibrium state
     sLattice.iniEquilibrium(domain, rhoF, uInf);
-  }
-}
+
+    // ALERNATIVE: define only Rho, find u from dynamics, then iniEqui
+    //sLattice.defineRho(domain, rhoF);
+    //auto uInf = sLattice.getU(domain);
+    //sLattice.iniEquilibrium(domain, rhoF, uInf);
+}  // setBoundaryValues
 
 void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T, DESCRIPTOR> const& converter,
   size_t iT, SuperGeometry<T, ndim>& superGeometry, T amplitude)
@@ -298,7 +223,7 @@ int main(int argc, char* argv[])
   converter.print();
 
   // === 2nd Step: Prepare Geometry ===
-  BoundaryType boundarytype = periodic;
+  BoundaryType boundarytype = local;
   Vector<T,ndim> originFluid(-0.5, -0.5, -0.5);
   Vector<T,ndim> extendFluid(physLength, physLength, physLength);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
@@ -338,7 +263,7 @@ int main(int argc, char* argv[])
 
   for (std::size_t iT=0; iT < iTmax; ++iT) {
     // === 5th Step: Definition of Initial and Boundary Conditions ===
-    if (boundarytype == local) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype);
+    if (boundarytype == local) setBoundaryValues(converter, sLattice, iT, superGeometry);
     // === 6th Step: Collide and Stream Execution ===
     sLattice.collideAndStream();
     // === 7th Step: Computation and Output of the Results ===
@@ -349,4 +274,5 @@ int main(int argc, char* argv[])
   timer.stop();
   timer.printSummary();
 }
+
 

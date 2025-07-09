@@ -10,6 +10,8 @@
 
 #ifndef SchallwelleDruck
 #define SchallwelleDruck
+#include <cmath>
+
 
 /* Berechnung Druckfeld*/
 namespace olb {
@@ -118,45 +120,68 @@ namespace olb {
        // } // namespace olb
 
 
-        template <unsigned ndim, typename T>
-           class SchallwelleDru : public AnalyticalF<ndim, T, T> 
-          {
+//         template <unsigned ndim, typename T>
+//            class SchallwelleDru : public AnalyticalF<ndim, T, T> 
+//           {
         
-protected:
+// protected:
+//     T amplitude;
+//     T Wellenzahl;  // = k
+//     T omega;       // Kreisfrequenz ω
+//     T phase;
+//     T time;
+//     Vector<T, ndim> x0;
+//     T t = 0.0;     // aktuelle Zeit
+
+// public:
+//     SchallwelleDru(T amplitude, T Wellenzahl, T omega, T phase,T time, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
+//         : AnalyticalF<ndim, T, T>(1),
+//           amplitude(amplitude),
+//           Wellenzahl(Wellenzahl),
+//           omega(omega),
+//           phase(phase),
+//           time(time),
+//           x0(x0) {}
+
+
+//     bool operator()(T output[], const T input[]) override {
+//         T distance = 0.0;
+//         if (time==0)
+//         {
+//           time=0.1;
+//         }
+        
+//         for (unsigned i = 0; i < ndim; ++i) {
+//             distance += (input[i] - x0[i]) * (input[i] - x0[i]);
+//         }
+//         distance = std::sqrt(distance);
+//         output[0] = amplitude * std::sin(Wellenzahl * distance - omega * time + phase);
+//         return true;
+//     }
+// };
+
+template <unsigned ndim, typename T>
+class SchallwelleDru : public AnalyticalF<ndim, T, T> {
+private:
     T amplitude;
-    T Wellenzahl;  // = k
-    T omega;       // Kreisfrequenz ω
+    T waveNumber; // k
+    T omega;      // ω
     T phase;
     T time;
-    Vector<T, ndim> x0;
-    T t = 0.0;     // aktuelle Zeit
 
 public:
-    SchallwelleDru(T amplitude, T Wellenzahl, T omega, T phase,T time, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
+    SchallwelleDru(T amplitude_, T waveNumber_, T omega_, T phase_, T time_)
         : AnalyticalF<ndim, T, T>(1),
-          amplitude(amplitude),
-          Wellenzahl(Wellenzahl),
-          omega(omega),
-          phase(phase),
-          time(time),
-          x0(x0) {}
-
+          amplitude(amplitude_), waveNumber(waveNumber_),
+          omega(omega_), phase(phase_), time(time_) {}
 
     bool operator()(T output[], const T input[]) override {
-        T distance = 0.0;
-        if (time==0)
-        {
-          time=0.1;
-        }
-        
-        for (unsigned i = 0; i < ndim; ++i) {
-            distance += (input[i] - x0[i]) * (input[i] - x0[i]);
-        }
-        distance = std::sqrt(distance);
-        output[0] = amplitude * std::sin(Wellenzahl * distance - omega * time + phase);
+        const T x = input[0]; // nur x-Koordinate
+        output[0] = amplitude * std::sin(waveNumber * x - omega * time + phase);
         return true;
     }
 };
+
 
 }
     #endif
