@@ -63,8 +63,8 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
     superGeometry.rename(2, 1);
       // Fuer die freie Welle nutzen
       // Verortung der Schallquelle
-      Vector<T,3> center(-0.5, 0.,0.); // Zentrum der Welle
-      T radius = dx;
+      //Vector<T,3> center(-0.5, 0.,0.); // Zentrum der Welle
+      //T radius = dx;
       //IndicatorSphere3D<T> pointSource(center, radius);
       //superGeometry.rename(1,3,pointSource);
       //Schallquelle
@@ -74,8 +74,8 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
       // TODO: rhoF durch std::sin(iT)
 
       //AnalyticalConst3D<T,T> rhoF(SchallwelleDru);       // Definiert rho auf 1
-      AnalyticalConst3D<T,T> uWall(0, 0, 0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-      AnalyticalConst3D<T,T> uLid(0, 0, 0);    // Definiert die Geschwindigkeit an der lid auf eine Geschwindigkeit in X Richtung und 0 in Y Richtung
+      //AnalyticalConst3D<T,T> uWall(0, 0, 0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
+      //AnalyticalConst3D<T,T> uLid(0, 0, 0);    // Definiert die Geschwindigkeit an der lid auf eine Geschwindigkeit in X Richtung und 0 in Y Richtung
 
 
 
@@ -114,7 +114,7 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
     case periodic: {
       // Fuer die freie Welle nutzen
       // Verortung der Schallquelle
-      Vector<T,3> center(0., 0.,0.); // Zentrum der Welle
+      //Vector<T,3> center(0., 0.,0.); // Zentrum der Welle
 
       //Schallquelle
       //SchallwelleDru<3,T> SchallwelleDru(1e-3,0.314,0.314,0.,0);//SchallwelleDruck(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
@@ -122,8 +122,8 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
       // TODO: rhoF durch std::sin(iT)
 
       //AnalyticalConst3D<T,T> rhoF(SchallwelleDru);       // Definiert rho auf 1
-      AnalyticalConst3D<T,T> uWall(0, 0, 0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-      AnalyticalConst3D<T,T> uLid(0, 0, 0);    // Definiert die Geschwindigkeit an der lid auf eine Geschwindigkeit in X Richtung und 0 in Y Richtung
+      //AnalyticalConst3D<T,T> uWall(0, 0, 0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
+      //AnalyticalConst3D<T,T> uLid(0, 0, 0);    // Definiert die Geschwindigkeit an der lid auf eine Geschwindigkeit in X Richtung und 0 in Y Richtung
 
       break;
     }
@@ -169,67 +169,58 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
 
 void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
   SuperLattice<T, DESCRIPTOR>& sLattice,
-  std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype)
+  std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude)
 {
 
   if (boundarytype == local) {
-  auto domain = superGeometry.getMaterialIndicator({3});
+    auto domain = superGeometry.getMaterialIndicator({3});
 
-  // 2 Sinusperioden in 40 Zeitschritten
-  T Kreisfrequenz = 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
+    // 2 Sinusperioden in 40 Zeitschritten
+    T Kreisfrequenz = 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
 
-  // optionaler Einschwingfaktor
-  T envelope = std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
+    // optionaler Einschwingfaktor
+    T envelope = std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
 
-  // Sinus-Anregung
-  AnalyticalConst3D<T,T> rhoF(1. + envelope * 1e-3 * std::sin(iT * Kreisfrequenz));
-  AnalyticalConst3D<T,T> uInf(0., 0., 0.);
+    // Sinus-Anregung
+    AnalyticalConst3D<T,T> rhoF(1. + envelope * 1e-3 * std::sin(iT * Kreisfrequenz));
+    AnalyticalConst3D<T,T> uInf(0., 0., 0.);
 
-  if(iT==0)
-    {
-      AnalyticalConst3D<T,T> rhoF(1.);       // Definiert rho auf 1
-      AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-    }
-
-  sLattice.defineRhoU(domain, rhoF, uInf);
-  sLattice.iniEquilibrium(domain, rhoF, uInf);
+    sLattice.defineRhoU(domain, rhoF, uInf);
+    sLattice.iniEquilibrium(domain, rhoF, uInf);
   }
 
   if (boundarytype == periodic && iT==0) {
     auto domain = superGeometry.getMaterialIndicator({1});
  
-
-
     T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
-    T amplitude= 1e-5;
     T wellenzahl=12.5;
     T phase =0.;
     //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
     T time= iT;
-    T geschwindigkeit=1./sqrt(3.);
+    T cs=1./sqrt(3.);
     
-    olb::SchallwelleDru<3, T> schallquelle(amplitude, wellenzahl, kreisfrequenz, phase, time);
-    olb::SchallwelleGesch<3,T> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,T(1),geschwindigkeit);
+    olb::SchallwelleDru<3, T, DESCRIPTOR> schallquelle(amplitude, wellenzahl, kreisfrequenz, phase, time, converter);
+    olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,T(1),cs,converter);
     // AnalyticalConst3D<T,T> rhoF(schallquelle);
     AnalyticalConst3D<T,T> uInf(0., 0., 0.);
 
 
     // Hier wird die Geschwindigkeit im Terminal ausgegeben
-    Vector<T,3> punkt = {0.5, 0.0, 0.0};  // Punkt, an dem ausgewertet wird
+    Vector<T,3> punkt = {0.0, 0.0, 0.0};  // Punkt, an dem ausgewertet wird
     T u[3];  // Ergebnis wird hier gespeichert
     schallquelle_geschwindigkeit(u, punkt.data());
-    std::cout << "[iT=" << iT << ", t=" << time << "s] Geschwindigkeit an (0.5,0,0): "
+    std::cout << "[iT=" << iT << ", t=" << time << "s] Geschwindigkeit an (0.0,0,0): "
     << "u = (" << u[0] << ", " << u[1] << ", " << u[2] << ")\n";
 
     // Hier wird der Druck im Terminal ausgegeben
     
     T p[3];  // Ergebnis wird hier gespeichert
     schallquelle(p, punkt.data());
-    std::cout << "[iT=" << iT << ", t=" << time << "s] Druck an (0.5,0,0): "
+    std::cout << "[iT=" << iT << ", t=" << time << "s] Druck an (0.0,0,0): "
     << "rho = (" << p[0] << ", " << p[1] << ", " << p[2] << ")\n";
 
-
-
+    //sLattice.defineRhoU(domain, schallquelle, schallquelle_geschwindigkeit);
+    //sLattice.iniEquilibrium(domain, schallquelle, schallquelle_geschwindigkeit);
     sLattice.defineRhoU(domain, schallquelle, schallquelle_geschwindigkeit);
     sLattice.iniEquilibrium(domain, schallquelle, schallquelle_geschwindigkeit);
   }
@@ -298,6 +289,7 @@ int main(int argc, char* argv[])
   CLIreader args(argc, argv);
   std::string outdir = args.getValueOrFallback<std::string>("--outdir", "");
   size_t maxLatticeT = args.getValueOrFallback("--iTmax", 0); // maximum number of iterations
+  T amplitude = args.getValueOrFallback("--a", 1e-3); // maximum number of iterations
   
   if (outdir == "") outdir = "./tmp/";
   else outdir = "./" + outdir + "/";
@@ -319,12 +311,12 @@ int main(int argc, char* argv[])
 
   // === 2nd Step: Prepare Geometry ===
   BoundaryType boundarytype = periodic;
-  Vector<T,ndim> originFluid(-0.5, -0.1, -0.1);
-  Vector<T,ndim> extendFluid(physLength, .2, .2);
+  Vector<T,ndim> originFluid(-0.5, -0.01, -0.01);
+  Vector<T,ndim> extendFluid(physLength, .02, .02);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
 
-  Vector<T,ndim> extend{physLength, .2, .2};
-  Vector<T,ndim> origin{-0.5, -0.1, -0.1};
+  Vector<T,ndim> extend{physLength, .02, .02};
+  Vector<T,ndim> origin{-0.5, -0.01, -0.01};
   IndicatorCuboid3D<T> cuboid(extend, origin);
   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
   cuboidDecomposition.setPeriodicity({true,true,true});
@@ -337,7 +329,6 @@ int main(int argc, char* argv[])
   // Vorläufige Loesung mit zufälligen Zahlen. Bitte die richtigen Zahlen noch hinzufuegen!
   T rho0 = 1.0;
   T u0 = converter.getCharLatticeVelocity();
-  T amplitude = 1e-3;
   T alpha = 0.314;  // oder berechnet aus einem Pulsparameter
   T dampingDepthPU = 0.1;
   T lengthDomain = physLength;
@@ -350,8 +341,8 @@ int main(int argc, char* argv[])
   // === 4th Step: Main Loop with Timer ===
   std::size_t iTmax = converter.getLatticeTime(physMaxT);
   if ( maxLatticeT != 0 ) iTmax = maxLatticeT;
-  T vtkanzahl=iTmax/10.*10.;
-  std::size_t iTvtk = int(std::max(iTmax/vtkanzahl, 1.));
+  T vtkanzahl=iTmax/10.;//*10.;
+  std::size_t iTvtk = 1;//int(std::max(iTmax/vtkanzahl, 1.));
   std::size_t iTtimer = int(std::max(iTmax/20., 1.));
   
   util::Timer<T> timer(iTmax, superGeometry.getStatistics().getNvoxel());
@@ -359,8 +350,8 @@ int main(int argc, char* argv[])
 
   for (std::size_t iT=0; iT < iTmax; ++iT) {
     // === 5th Step: Definition of Initial and Boundary Conditions ===
-    if (boundarytype == local) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype);
-    if (boundarytype == periodic) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype);
+    if (boundarytype == local) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude);
+    if (boundarytype == periodic) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude);
     if ( iT%iTvtk == 0 ) getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);
     // === 6th Step: Collide and Stream Execution ===
     sLattice.collideAndStream();

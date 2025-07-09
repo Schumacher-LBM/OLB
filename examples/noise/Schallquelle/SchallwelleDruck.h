@@ -4,7 +4,7 @@
 */
 
 /* Wellengleichung
- * p(x)=A*sin(kx+großes Phi)
+ * p(x)=A*sin(kx-ot+großes Phi)
  * u(x)=1/(rho_0*c_s)*p(x)
 */
 
@@ -160,7 +160,7 @@ namespace olb {
 //     }
 // };
 
-template <unsigned ndim, typename T>
+template <unsigned ndim, typename T, typename DESCRIPTOR>
 class SchallwelleDru : public AnalyticalF<ndim, T, T> {
 private:
     T amplitude;
@@ -168,16 +168,17 @@ private:
     T omega;      // ω
     T phase;
     T time;
+    UnitConverter<T,DESCRIPTOR> converter;
 
 public:
-    SchallwelleDru(T amplitude_, T waveNumber_, T omega_, T phase_, T time_)
+    SchallwelleDru(T amplitude_, T waveNumber_, T omega_, T phase_, T time_, UnitConverter<T,DESCRIPTOR> converter_)
         : AnalyticalF<ndim, T, T>(1),
           amplitude(amplitude_), waveNumber(waveNumber_),
-          omega(omega_), phase(phase_), time(time_) {}
+          omega(omega_), phase(phase_), time(time_), converter(converter_) {}
 
     bool operator()(T output[], const T input[]) override {
         const T x = input[0]; // nur x-Koordinate
-        output[0] = amplitude * std::sin(waveNumber * x - omega * time + phase);
+        output[0] = converter.getLatticeDensityFromPhysPressure(amplitude * std::sin(waveNumber * x - omega * time + phase));
         return true;
     }
 };
