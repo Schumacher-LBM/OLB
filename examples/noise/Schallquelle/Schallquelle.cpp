@@ -63,10 +63,10 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
     superGeometry.rename(2, 1);
       // Fuer die freie Welle nutzen
       // Verortung der Schallquelle
-      Vector<T,3> center(0., 0.,0.); // Zentrum der Welle
+      Vector<T,3> center(-0.5, 0.,0.); // Zentrum der Welle
       T radius = dx;
-      IndicatorSphere3D<T> pointSource(center, radius);
-      superGeometry.rename(1,3,pointSource);
+      //IndicatorSphere3D<T> pointSource(center, radius);
+      //superGeometry.rename(1,3,pointSource);
       //Schallquelle
       //SchallwelleDru<3,T> SchallwelleDru(1e-3,0.314,0.314,0.,0, center);//SchallwelleDruck(T amplitude, T Wellenzahl, T phase, Vector<T, ndim> x0 = Vector<T, ndim>(0.))
 
@@ -91,7 +91,7 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
     //superGeometry.rename(1,3,1,pointSource);
     break;
   }
-  }
+  }//prepareGeometry
 
   superGeometry.getStatistics().print();
 }
@@ -138,7 +138,7 @@ void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometr
     sLattice.initialize();
   
     clout << "Prepare Lattice ... OK" << std::endl;
-  }
+  } //prepareLattice
 
 // Hier werden die Startbedingungen für eine Gausschen Puls definiert
 // void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
@@ -195,29 +195,25 @@ void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
   sLattice.iniEquilibrium(domain, rhoF, uInf);
   }
 
-  if (boundarytype == periodic) {
-    auto domain = superGeometry.getMaterialIndicator({3});
+  if (boundarytype == periodic && iT==0) {
+    auto domain = superGeometry.getMaterialIndicator({1});
     T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
     T amplitude= 1e-3;
-    T wellenzahl=10.;
+    T wellenzahl=12.5;
     T phase =0.;
-    Vector<T,3> center(0., 0., 0.);
     T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
-    olb::SchallwelleDru<3, T> schallquelle(amplitude, wellenzahl, kreisfrequenz, phase, time);
 
+    
+    olb::SchallwelleDru<3, T> schallquelle(amplitude, wellenzahl, kreisfrequenz, phase, time);
+    olb::SchallwelleGesch<3,T> schallquelle_geschwindigkeit(amplitude,wellenzahl,phase,T(1),T(0));
     // AnalyticalConst3D<T,T> rhoF(schallquelle);
     AnalyticalConst3D<T,T> uInf(0., 0., 0.);
 
-    if(iT==0)
-    {
-      AnalyticalConst3D<T,T> rhoF(1.);       // Definiert rho auf 1
-      AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-    }
 
     sLattice.defineRhoU(domain, schallquelle, uInf);
     sLattice.iniEquilibrium(domain, schallquelle, uInf);
   }
-}
+} //setBoundaryValues
 
 void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T, DESCRIPTOR> const& converter,
   size_t iT, SuperGeometry<T, ndim>& superGeometry, T amplitude)
@@ -266,8 +262,8 @@ void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T,
                       horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
     //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
     //                    false, true, pmin, pmax);
-    //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
-    //                    diagonal2d, false, true, pmin, pmax);
+    linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
+                        diagonal2d, false, false, pmin, pmax);
 }  // getGraphicalResults
 
 
@@ -298,7 +294,7 @@ int main(int argc, char* argv[])
   converter.print();
 
   // === 2nd Step: Prepare Geometry ===
-  BoundaryType boundarytype = periodic;
+  BoundaryType boundarytype = local;
   Vector<T,ndim> originFluid(-0.5, -0.5, -0.5);
   Vector<T,ndim> extendFluid(physLength, physLength, physLength);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
@@ -341,10 +337,10 @@ int main(int argc, char* argv[])
     // === 5th Step: Definition of Initial and Boundary Conditions ===
     if (boundarytype == local) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype);
     if (boundarytype == periodic) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype);
+    if ( iT%iTvtk == 0 ) getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);
     // === 6th Step: Collide and Stream Execution ===
     sLattice.collideAndStream();
     // === 7th Step: Computation and Output of the Results ===
-    if ( iT%iTvtk == 0 ) getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);
     if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
   }
 
