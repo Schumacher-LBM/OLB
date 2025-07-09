@@ -205,7 +205,7 @@ void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
     T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
     olb::SchallwelleDru<3, T> schallquelle(amplitude, wellenzahl, kreisfrequenz, phase, time);
 
-    AnalyticalConst3D<T,T> rhoF(schallquelle);
+    // AnalyticalConst3D<T,T> rhoF(schallquelle);
     AnalyticalConst3D<T,T> uInf(0., 0., 0.);
 
     if(iT==0)
@@ -214,8 +214,8 @@ void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
       AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
     }
 
-    sLattice.defineRhoU(domain, rhoF, uInf);
-    sLattice.iniEquilibrium(domain, rhoF, uInf);
+    sLattice.defineRhoU(domain, schallquelle, uInf);
+    sLattice.iniEquilibrium(domain, schallquelle, uInf);
   }
 }
 
@@ -330,7 +330,8 @@ int main(int argc, char* argv[])
   // === 4th Step: Main Loop with Timer ===
   std::size_t iTmax = converter.getLatticeTime(physMaxT);
   if ( maxLatticeT != 0 ) iTmax = maxLatticeT;
-  std::size_t iTvtk = int(std::max(iTmax/5., 1.));
+  T vtkanzahl=iTmax/10.;
+  std::size_t iTvtk = int(std::max(iTmax/vtkanzahl, 1.));
   std::size_t iTtimer = int(std::max(iTmax/20., 1.));
   
   util::Timer<T> timer(iTmax, superGeometry.getStatistics().getNvoxel());
@@ -339,6 +340,7 @@ int main(int argc, char* argv[])
   for (std::size_t iT=0; iT < iTmax; ++iT) {
     // === 5th Step: Definition of Initial and Boundary Conditions ===
     if (boundarytype == local) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype);
+    if (boundarytype == periodic) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype);
     // === 6th Step: Collide and Stream Execution ===
     sLattice.collideAndStream();
     // === 7th Step: Computation and Output of the Results ===
