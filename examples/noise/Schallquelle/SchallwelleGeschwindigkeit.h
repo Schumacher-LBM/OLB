@@ -46,6 +46,10 @@ namespace olb {
         
           bool operator()(T output[], const T input[]) override
           {
+            /* Wellengleichung
+             * p(x)=A*sin(kx+großes Phi)
+             * u(x)=1/(rho_0*c_s)*p(x)
+            */
             T distance = input[0];
             output[0] = converter.getLatticeVelocity(1./(rho0*cs)*(amplitude*sin(Wellenzahl*distance-kreisfrequenz*time+phase)));
             for ( size_t i=1; i<ndim; i++ ) output[i] = 0.;

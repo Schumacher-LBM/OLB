@@ -177,6 +177,10 @@ public:
           omega(omega_), phase(phase_), time(time_), converter(converter_) {}
 
     bool operator()(T output[], const T input[]) override {
+        /* Wellengleichung
+        * p(x)=A*sin(kx+großes Phi)
+        * u(x)=1/(rho_0*c_s)*p(x)
+        */
         const T x = input[0]; // nur x-Koordinate
         output[0] = converter.getLatticeDensityFromPhysPressure(amplitude * std::sin(waveNumber * x - omega * time + phase));
         return true;

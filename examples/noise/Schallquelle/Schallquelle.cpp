@@ -219,8 +219,8 @@ void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
     std::cout << "[iT=" << iT << ", t=" << time << "s] Druck an (0.0,0,0): "
     << "rho = (" << p[0] << ", " << p[1] << ", " << p[2] << ")\n";
 
-    //sLattice.defineRhoU(domain, schallquelle, schallquelle_geschwindigkeit);
-    //sLattice.iniEquilibrium(domain, schallquelle, schallquelle_geschwindigkeit);
+    // sLattice.defineRhoU(domain, schallquelle, uInf);
+    // sLattice.iniEquilibrium(domain, schallquelle, uInf);
     sLattice.defineRhoU(domain, schallquelle, schallquelle_geschwindigkeit);
     sLattice.iniEquilibrium(domain, schallquelle, schallquelle_geschwindigkeit);
   }
@@ -254,23 +254,23 @@ void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T,
 
     // output pressure image
     SuperLatticePhysPressure3D<T, DESCRIPTOR> pressure(sLattice, converter);
-    BlockReduction3D2D<T>                     pressureReduction(pressure, Vector<T, ndim>({0, 0, 1}));
-    heatmap::plotParam<T>                     jpeg_ParamP;
-    jpeg_ParamP.maxValue       = converter.getPhysPressure(+amplitude / 200);
-    jpeg_ParamP.minValue       = converter.getPhysPressure(-amplitude / 200);
-    jpeg_ParamP.colour         = "rainbow";
-    jpeg_ParamP.fullScreenPlot = true;
-    heatmap::write(pressureReduction, iT, jpeg_ParamP);
+    // BlockReduction3D2D<T>                     pressureReduction(pressure, Vector<T, ndim>({0, 0, 1}));
+    // heatmap::plotParam<T>                     jpeg_ParamP;
+    // jpeg_ParamP.maxValue       = converter.getPhysPressure(+amplitude / 200);
+    // jpeg_ParamP.minValue       = converter.getPhysPressure(-amplitude / 200);
+    // jpeg_ParamP.colour         = "rainbow";
+    // jpeg_ParamP.fullScreenPlot = true;
+    // heatmap::write(pressureReduction, iT, jpeg_ParamP);
 
-    std::stringstream ss;
-    ss << std::setw(4) << std::setfill('0') << iT;
-    T                          dist        = converter.getPhysDeltaX();
-    T                          ndatapoints = converter.getResolution(); // number of data points on line
-    AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
-    T                          pmin(converter.getPhysPressure(-amplitude / 50));
-    T                          pmax(converter.getPhysPressure(+amplitude / 50));
-    linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
-                      horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
+    // std::stringstream ss;
+    // ss << std::setw(4) << std::setfill('0') << iT;
+    // T                          dist        = converter.getPhysDeltaX();
+    // T                          ndatapoints = converter.getResolution(); // number of data points on line
+    // AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
+    // T                          pmin(converter.getPhysPressure(-amplitude / 50));
+    // T                          pmax(converter.getPhysPressure(+amplitude / 50));
+    // linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
+    //                   horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
     //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
     //                    false, true, pmin, pmax);
     // linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
