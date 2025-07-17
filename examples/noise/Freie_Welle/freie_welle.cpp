@@ -19,7 +19,7 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
  #include "olb3D.hh"
  #include "../noiseauxiliary.h"
  #include "SchallwelleGeschwindigkeit.h"
- #include "SchallwelleDruck.h"
+ #include "SchallwelleDichte.h"
  #include "functors/analytical/analyticalF.hh"
  
  
@@ -105,7 +105,7 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
  
  void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
    SuperLattice<T, DESCRIPTOR>& sLattice,
-   std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude)
+   std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude, T rho0)
  {
  
    if (boundarytype == local) {
@@ -127,7 +127,7 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
  
    if (boundarytype == periodic && iT==0) {
      auto domain = superGeometry.getMaterialIndicator({1});
-  
+    
      T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
      T wellenzahl=12.5;
      T phase =0.;
@@ -135,8 +135,8 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
      T time= iT;
      T cs=sqrt(T(1)/descriptors::invCs2<T,DESCRIPTOR>());
 
-     olb::SchallwelleDru<3, T, DESCRIPTOR> schallquelle(amplitude, wellenzahl, kreisfrequenz, phase, time, converter);
-     olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,T(1),cs,converter);
+     olb::SchallwelleRho<3, T, DESCRIPTOR> schallquelle(rho0, amplitude, wellenzahl, kreisfrequenz, phase, time, converter);
+     olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,rho0,cs,converter);
      // AnalyticalConst3D<T,T> rhoF(schallquelle);
      AnalyticalConst3D<T,T> uInf(0., 0., 0.);
  
@@ -285,8 +285,8 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
  
    for (std::size_t iT=0; iT < iTmax; ++iT) {
      // === 5th Step: Definition of Initial and Boundary Conditions ===
-     if (boundarytype == local) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude);
-     if (boundarytype == periodic) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude);
+     if (boundarytype == local) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0);
+     if (boundarytype == periodic) setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude, rho0);
      if ( iT%iTvtk == 0 ) getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);
      // === 6th Step: Collide and Stream Execution ===
      sLattice.collideAndStream();

@@ -17,7 +17,7 @@ namespace olb {
   class SchallwelleGesch : public AnalyticalF<ndim, T, T> 
    {
         protected:
-       
+        
           T               amplitude;
           T               Wellenzahl;
           T               kreisfrequenz;
