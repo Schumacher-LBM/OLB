@@ -63,8 +63,13 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
    } 
      
    case local: {
-     
-     break;
+    superGeometry.rename(2, 1);
+    Vector<T,3> center(0., 0.,0.); // Zentrum der Welle
+    T radius = dx;
+    IndicatorSphere3D<T> pointSource(center, radius);
+    superGeometry.rename(1,3,pointSource);
+    //superGeometry.rename(1,3,1,pointSource);
+    break;
    }
    }
  
@@ -120,7 +125,13 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
      // Sinus-Anregung
      AnalyticalConst3D<T,T> rhoF(1. + envelope * 1e-3 * std::sin(iT * Kreisfrequenz));
      AnalyticalConst3D<T,T> uInf(0., 0., 0.);
- 
+    
+      if(iT==0)
+      {
+        AnalyticalConst3D<T,T> rhoF(1.);       // Definiert rho auf 1
+        AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
+      }
+
      sLattice.defineRhoU(domain, rhoF, uInf);
      sLattice.iniEquilibrium(domain, rhoF, uInf);
    }
@@ -188,25 +199,25 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
      task(vtmWriter, iT);
      });  // scheduleBackgroundOutputVTK
  
-     // output pressure image
-    //  SuperLatticePhysPressure3D<T, DESCRIPTOR> pressure(sLattice, converter);
-    //  BlockReduction3D2D<T>                     pressureReduction(pressure, Vector<T, ndim>({0, 0, 1}));
-    //  heatmap::plotParam<T>                     jpeg_ParamP;
-    //  jpeg_ParamP.maxValue       = converter.getPhysPressure(+amplitude / 200);
-    //  jpeg_ParamP.minValue       = converter.getPhysPressure(-amplitude / 200);
-    //  jpeg_ParamP.colour         = "rainbow";
-    //  jpeg_ParamP.fullScreenPlot = true;
-    //  heatmap::write(pressureReduction, iT, jpeg_ParamP);
+     //output pressure image
+     SuperLatticePhysPressure3D<T, DESCRIPTOR> pressure(sLattice, converter);
+     BlockReduction3D2D<T>                     pressureReduction(pressure, Vector<T, ndim>({0, 0, 1}));
+     heatmap::plotParam<T>                     jpeg_ParamP;
+     jpeg_ParamP.maxValue       = converter.getPhysPressure(+amplitude / 200);
+     jpeg_ParamP.minValue       = converter.getPhysPressure(-amplitude / 200);
+     jpeg_ParamP.colour         = "rainbow";
+     jpeg_ParamP.fullScreenPlot = true;
+     heatmap::write(pressureReduction, iT, jpeg_ParamP);
  
-    //  std::stringstream ss;
-    //  ss << std::setw(4) << std::setfill('0') << iT;
-    //  T                          dist        = converter.getPhysDeltaX();
-    //  T                          ndatapoints = converter.getResolution(); // number of data points on line
-    //  AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
-    //  T                          pmin(converter.getPhysPressure(-amplitude / 50));
-    //  T                          pmax(converter.getPhysPressure(+amplitude / 50));
-    //  linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
-    //                    horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
+     std::stringstream ss;
+     ss << std::setw(4) << std::setfill('0') << iT;
+     T                          dist        = converter.getPhysDeltaX();
+     T                          ndatapoints = converter.getResolution(); // number of data points on line
+     AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
+     T                          pmin(converter.getPhysPressure(-amplitude / 50));
+     T                          pmax(converter.getPhysPressure(+amplitude / 50));
+     linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
+                       horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
      //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
      //                    false, true, pmin, pmax);
      // linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
@@ -245,7 +256,7 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
    converter.print();
  
    // === 2nd Step: Prepare Geometry ===
-   BoundaryType boundarytype = periodic;
+   BoundaryType boundarytype = local;
    Vector<T,ndim> originFluid(-0.5, -0.01, -0.01);
    Vector<T,ndim> extendFluid(physLength, .02, .02);
    IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
