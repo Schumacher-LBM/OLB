@@ -272,7 +272,7 @@ int main(int argc, char* argv[])
   converter.print();
 
   // === 2nd Step: Prepare Geometry ===
-  BoundaryType boundarytype = periodic;
+  BoundaryType boundarytype = local;
   Vector<T,ndim> originFluid(-2, -0.01, -0.01);
   Vector<T,ndim> extendFluid(4, .02, .02);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
@@ -342,7 +342,7 @@ int main(int argc, char* argv[])
     // #if defined(FEATURE_TWOD)
     // blockD.resize({blockD.getNx()+1,1,1});
     // #elif defined(FEATURE_THREED)
-    blockD.resize({blockD.getNx()+1,1});
+    blockD.resize({blockD.getNx()+1,1,1});
     //#endif
     auto watchpoint = blockD.get(blockD.getNcells()-1);
     watchpoint.template setField<fields::PHYS_R>(measurePhysR);
@@ -360,14 +360,14 @@ int main(int argc, char* argv[])
   if (measureWatchpointR[1] == 0 && singleton::mpi().getRank() == 0) {
     std::cout << "[WARNUNG] Messpunkt wurde NICHT lokal gefunden! Druckwerte bleiben leer." << std::endl;
   }
-  if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude, rho0);}
+  if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, 0, superGeometry, boundarytype, amplitude, rho0);}
 
   for (std::size_t iT=0; iT < iTmax; ++iT) {
     // === 5th Step: Definition of Initial and Boundary Conditions ===
     if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0);}
     
     // ------------------------- Messwerte nehmen
-    std::vector<T> measurements(2);
+    std::vector<T> measurements(1);
     pressureO.execute();
     watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
     if (loadBalancer.isLocal(measureWatchpointR[0])) {
@@ -376,7 +376,7 @@ int main(int argc, char* argv[])
       T measurePressure = measureCell.template getField<descriptors::SCALAR>();
       measurements[0] += converter.getPhysPressure(measurePressure);
     }
-    std::vector<T> globalMeasurements(ndim);
+    std::vector<T> globalMeasurements(1);
 
     #ifdef PARALLEL_MODE_MPI
     singleton::mpi().reduceVect(measurements, globalMeasurements, MPI_SUM);
@@ -384,7 +384,7 @@ int main(int argc, char* argv[])
     #else
     globalMeasurements = measurements;
     #endif
-    csvWriter.writeDataFile(iT, std::vector<T>{converter.getPhysTime(iT), T{globalMeasurements[0]}});
+    csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), T{globalMeasurements[0]}});
     
     std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
               << "Gemessener Druck am Punkt ("
