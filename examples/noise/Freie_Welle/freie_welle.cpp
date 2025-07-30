@@ -12,37 +12,53 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
  *
  */
 
+#define FEATURE_REPORTER
+
+#include <olb.h>
+#include "olb3D.h"
+#include "olb3D.hh"
+#include "../noiseauxiliary.h"
+#include "SchallwelleGeschwindigkeit.h"
+#include "SchallwelleDichte.h"
+#include "functors/analytical/analyticalF.hh"
+
+using namespace olb;
+
+using T = FLOATING_POINT_TYPE;
+using DESCRIPTOR = descriptors::D3Q19<>;
+using BulkDynamics   = BGKdynamics<T, DESCRIPTOR>;
+using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
+
+const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
+
+const T physDeltaX        = 0.02;   // grid spacing [m]
+const T physDeltaT        = 0.00078125;  // temporal spacing [s]
+const T physLength        = 1.0;         // length of the squared cuboid [m]
+const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s]
+const T physViscosity     = 0.005;        // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich
+const T physDensity       = 1.0;         // fluid density [kg/(m*m*m)]
+const T physMaxT          = 0.5;        // maximal simulation time [s]
+
+typedef enum { periodic, local } BoundaryType;
+ 
 
 
- #include <olb.h>
- #include "olb3D.h"
- #include "olb3D.hh"
- #include "../noiseauxiliary.h"
- #include "SchallwelleGeschwindigkeit.h"
- #include "SchallwelleDichte.h"
- #include "functors/analytical/analyticalF.hh"
-  
- using namespace olb;
- 
- using T = FLOATING_POINT_TYPE;
- using DESCRIPTOR = descriptors::D3Q19<>;
- using BulkDynamics   = BGKdynamics<T, DESCRIPTOR>;
- using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
- 
- const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
- 
- const T physDeltaX        = 0.02;   // grid spacing [m]
- const T physDeltaT        = 0.00078125;  // temporal spacing [s]
- const T physLength        = 1.0;         // length of the squared cuboid [m]
- const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s]
- const T physViscosity     = 0.005;        // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich
- const T physDensity       = 1.0;         // fluid density [kg/(m*m*m)]
- const T physMaxT          = 0.5;        // maximal simulation time [s]
- 
- typedef enum { periodic, local } BoundaryType;
- 
+struct PressureO {
+  static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
 
+  using parameters = meta::list<>;
 
+  template <typename CELLS, typename PARAMETERS>
+  void apply(CELLS& cells, PARAMETERS& parameters) any_platform
+  {
+    using V = typename CELLS::template value_t<names::NavierStokes>::value_t;
+    using DESCRIPTOR = typename CELLS::template value_t<names::NavierStokes>::descriptor_t;
+    auto particle = cells.template get<names::Points>();
+    const V rho = cells.template get<names::NavierStokes>().computeRho();
+    const V pressure = util::pressureFromDensity<V,DESCRIPTOR>(rho);
+    particle.template setField<descriptors::SCALAR>(pressure);
+  }
+};
 
 
 
@@ -123,7 +139,6 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
  
      // 2 Sinusperioden in 40 Zeitschritten
      T Kreisfrequenz = 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
- 
      // optionaler Einschwingfaktor
      T envelope = std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
  
@@ -230,108 +245,72 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
  }  // getGraphicalResults
  
  
-    
-    // Messwerte nehmen
-    #ifdef FEATURE_REPORTER
-    struct PressureO {
-      static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
+int main(int argc, char* argv[])
+{
+  // === 1st Step: Initialization ===
+  initialize(&argc, &argv);
+  CLIreader args(argc, argv);
+  std::string outdir = args.getValueOrFallback<std::string>("--outdir", "");
+  outdir += "_reporter";
+  size_t maxLatticeT = args.getValueOrFallback("--iTmax", 0); // maximum number of iterations
+  T amplitude = args.getValueOrFallback("--a", 1e-3); // maximum number of iterations
+  if (outdir == "") outdir = "./tmp/";
+  else outdir = "./" + outdir + "/";
+  singleton::directories().setOutputDir(outdir);
+  
+  OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
 
-      using parameters = meta::list<>;
+  // Provide the unit converter the characteristic entities
+  const UnitConverter<T,DESCRIPTOR> converter (
+    physDeltaX,        // physDeltaX: spacing between two lattice cells in [m]
+    physDeltaT,        // physDeltaT: time step in [s]
+    physLength,        // charPhysLength: reference length of simulation geometry in [m]
+    physLidVelocity,   // charPhysVelocity: highest expected velocity during simulation in [m/s]
+    physViscosity,     // physViscosity: physical kinematic viscosity in [m^2/s]
+    physDensity        // physDensity: physical density [kg/m^3]
+  );
+  converter.print();
 
-      template <typename CELLS, typename PARAMETERS>
-      void apply(CELLS& cells, PARAMETERS& parameters) any_platform
-      {
-        using V = typename CELLS::template value_t<names::NavierStokes>::value_t;
-        using DESCRIPTOR = typename CELLS::template value_t<names::NavierStokes>::descriptor_t;
-        auto particle = cells.template get<names::Points>();
-        const V rho = cells.template get<names::NavierStokes>().computeRho();
-        const V pressure = util::pressureFromDensity<V,DESCRIPTOR>(rho);
-        particle.template setField<descriptors::SCALAR>(pressure);
-      }
-    };
-    #endif
-
- 
- 
- int main(int argc, char* argv[])
- {
-   // === 1st Step: Initialization ===
-   initialize(&argc, &argv);
-   CLIreader args(argc, argv);
-   std::string outdir = args.getValueOrFallback<std::string>("--outdir", "");
-   //Messpunkt nehmen:
-   #ifdef FEATURE_REPORTER
-      outdir += "_reporter";
-    #endif
-   size_t maxLatticeT = args.getValueOrFallback("--iTmax", 0); // maximum number of iterations
-   T amplitude = args.getValueOrFallback("--a", 1e-3); // maximum number of iterations
-   if (outdir == "") outdir = "./tmp/";
-   else outdir = "./" + outdir + "/";
-   singleton::directories().setOutputDir(outdir);
-   
-   OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
- 
-   
-   // Provide the unit converter the characteristic entities
-   const UnitConverter<T,DESCRIPTOR> converter (
-     physDeltaX,        // physDeltaX: spacing between two lattice cells in [m]
-     physDeltaT,        // physDeltaT: time step in [s]
-     physLength,        // charPhysLength: reference length of simulation geometry in [m]
-     physLidVelocity,   // charPhysVelocity: highest expected velocity during simulation in [m/s]
-     physViscosity,     // physViscosity: physical kinematic viscosity in [m^2/s]
-     physDensity        // physDensity: physical density [kg/m^3]
-   );
-   converter.print();
- 
-   // === 2nd Step: Prepare Geometry ===
-   BoundaryType boundarytype = periodic;
-   Vector<T,ndim> originFluid(-2, -0.01, -0.01);
-   Vector<T,ndim> extendFluid(4, .02, .02);
-   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
-   // -----------Variabeln definiere Messungen
-   Vector<T, ndim> measurePhysR;         
-   Vector<int, 4> measureLatticeR{};     
-   LatticeR<2> measureWatchpointR;
-    //std::vector<T> measurements(2);
-    std::vector<T> measurements(1);
-    size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
-    size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
+  // === 2nd Step: Prepare Geometry ===
+  BoundaryType boundarytype = periodic;
+  Vector<T,ndim> originFluid(-2, -0.01, -0.01);
+  Vector<T,ndim> extendFluid(4, .02, .02);
+  IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
+  // -----------Variabeln definiere Messungen
+  size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
+  size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
     
   //-----------------------------
-   Vector<T,ndim> extend{4, .02, .02};
-   Vector<T,ndim> origin{-2, -0.01, -0.01};
-   IndicatorCuboid3D<T> cuboid(extend, origin);
-   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
-   cuboidDecomposition.setPeriodicity({true,true,true});
-   HeuristicLoadBalancer<T> loadBalancer(cuboidDecomposition);
-   
-   SuperGeometry<T,ndim> superGeometry(cuboidDecomposition, loadBalancer);
-   prepareGeometry(converter, superGeometry, domainFluid, boundarytype);
-   //Variabel fuer Messwerte
-  // SuperD<T,descriptors::D3<fields::PHYS_R,descriptors::SCALAR>> watchpointsD(loadBalancer);
+  Vector<T,ndim> extend{4, .02, .02};
+  Vector<T,ndim> origin{-2, -0.01, -0.01};
+  IndicatorCuboid3D<T> cuboid(extend, origin);
+  CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
+  cuboidDecomposition.setPeriodicity({true,true,true});
+  HeuristicLoadBalancer<T> loadBalancer(cuboidDecomposition);
+  
+  SuperGeometry<T,ndim> superGeometry(cuboidDecomposition, loadBalancer);
+  prepareGeometry(converter, superGeometry, domainFluid, boundarytype);
 
-    
-   // === 3rd Step: Prepare Lattice ===
-   
-   T rho0 = 1.0; // Koennte diese Stelle das Problem sein?
-   T u0 = converter.getCharLatticeVelocity();
-   T alpha = 0.314;  // oder berechnet aus einem Pulsparameter
-   T dampingDepthPU = 0.1;
-   T lengthDomain = physLength;
-   T dampingStrength = 1.0;
+  // === 3rd Step: Prepare Lattice ===
+  T rho0 = 1.0; // Koennte diese Stelle das Problem sein?
+  T u0 = converter.getCharLatticeVelocity();
+  T alpha = 0.314;  // oder berechnet aus einem Pulsparameter
+  T dampingDepthPU = 0.1;
+  T lengthDomain = physLength;
+  T dampingStrength = 1.0;
  
-   SuperLattice<T,DESCRIPTOR> sLattice(superGeometry);
-   prepareLattice(converter, sLattice, superGeometry, rho0, u0, amplitude, alpha,
-     boundarytype, dampingDepthPU, lengthDomain, dampingStrength);
+  SuperLattice<T,DESCRIPTOR> sLattice(superGeometry);
+  prepareLattice( converter, sLattice, superGeometry, rho0, u0, amplitude, alpha,
+                  boundarytype, dampingDepthPU, lengthDomain, dampingStrength);
  
-   // === 4th Step: Main Loop with Timer ===
-   std::size_t iTmax = converter.getLatticeTime(physMaxT);
-   if ( maxLatticeT != 0 ) iTmax = maxLatticeT;
-   T vtkanzahl=iTmax;///10.;//*10.;
-   std::size_t iTvtk = 1;//int(std::max(iTmax/vtkanzahl, 1.));
-   std::size_t iTtimer = int(std::max(iTmax/20., 1.));
-    // === calculate output intervals
-    // nout is the minimum number of vtk outputs --> take max between nout and nout derived from iTout or tout
+  // === 4th Step: Main Loop with Timer ===
+  std::size_t iTmax = converter.getLatticeTime(physMaxT);
+  if ( maxLatticeT != 0 ) iTmax = maxLatticeT;
+  T vtkanzahl=iTmax;///10.;//*10.;
+  std::size_t iTvtk = 1;//int(std::max(iTmax/vtkanzahl, 1.));
+  std::size_t iTtimer = int(std::max(iTmax/20., 1.));
+  // === calculate output intervals
+  // nout is the minimum number of vtk outputs --> take max between nout and nout derived from iTout or tout
   
   size_t iTplot = std::min(std::max(int(maxLatticeT / nplot), 1), 25);
 
@@ -341,156 +320,85 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
 
    util::Timer<T> timer(iTmax, superGeometry.getStatistics().getNvoxel());
    timer.start();
-    // Zwischenschritt: Messwerte nehmen
+  // Zwischenschritt: Messwerte nehmen //-----------Vorgegeben---
+  // #if defined(FEATURE_TWOD)
+  // Vector<T,ndim> measurePhysR{-0.0875,0.0052};
+  // Vector<int,3> measureLatticeR{};
+  //#elif defined(FEATURE_THREED)
+  Vector<T,ndim> measurePhysR{-0.5,0.00,0.00};
+  Vector<int,4> measureLatticeR{};
+  //#endif
+  // get nearest lattice point to measurePhysR
+  if (auto latticeR = cuboidDecomposition.getLatticeR(measurePhysR)) {
+    measureLatticeR = *latticeR;
+  }
+  LatticeR<2> measureWatchpointR;
+  // #if defined(FEATURE_TWOD)
+  // SuperD<T,descriptors::D2<fields::PHYS_R,descriptors::SCALAR>> watchpointsD(loadBalancer);
+  // #elif defined(FEATURE_THREED)
+  SuperD<T,descriptors::D3<fields::PHYS_R,descriptors::SCALAR>> watchpointsD(loadBalancer);
+  if (loadBalancer.isLocal(measureLatticeR[0])) {
+    auto& blockD = watchpointsD.getBlock(measureLatticeR[0]);
+    // #if defined(FEATURE_TWOD)
+    // blockD.resize({blockD.getNx()+1,1,1});
+    // #elif defined(FEATURE_THREED)
+    blockD.resize({blockD.getNx()+1,1});
+    //#endif
+    auto watchpoint = blockD.get(blockD.getNcells()-1);
+    watchpoint.template setField<fields::PHYS_R>(measurePhysR);
+    measureWatchpointR[0] = measureLatticeR[0];
+    measureWatchpointR[1] = blockD.getNcells()-1;
+  }
+  watchpointsD.setProcessingContext(ProcessingContext::Simulation);
+
+  SuperLatticePointCoupling pressureO(PressureO{},
+                                      names::NavierStokes{}, sLattice,
+                                      names::Points{}, watchpointsD);
+
+  CSV<T> csvWriter("gausspulsePressure", ';', {"iT", "t", "p"}, ".csv");
+
+  if (measureWatchpointR[1] == 0 && singleton::mpi().getRank() == 0) {
+    std::cout << "[WARNUNG] Messpunkt wurde NICHT lokal gefunden! Druckwerte bleiben leer." << std::endl;
+  }
+  if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude, rho0);}
+
+  for (std::size_t iT=0; iT < iTmax; ++iT) {
+    // === 5th Step: Definition of Initial and Boundary Conditions ===
+    if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0);}
     
-
-      //-----------Vorgegeben---
-        #ifdef FEATURE_REPORTER
-        measurePhysR = {0.01, 0.00, 0.00}; 
-        
-        // get nearest lattice point to measurePhysR
-
-        if (auto latticeR = cuboidDecomposition.getLatticeR(measurePhysR)) {
-          measureLatticeR = *latticeR;
-        }
-        // Vector<T,3> referencePhysR{0.082,0.0052,0.0075};
-        // Vector<int,4> referenceLatticeR{};
-        // if (auto latticeR = cuboidDecomposition.getLatticeR(referencePhysR)) {
-        //   referenceLatticeR = *latticeR;
-        // }
-        //LatticeR<2> measureWatchpointR;
-        // LatticeR<2> referenceWatchpointR;
-        
-        SuperD<T,descriptors::D3<fields::PHYS_R,descriptors::SCALAR>> watchpointsD(loadBalancer);
-        
-
-        if (loadBalancer.isLocal(measureLatticeR[0])) {
-          auto& blockD = watchpointsD.getBlock(measureLatticeR[0]);
-
-          blockD.resize({blockD.getNx()+1,1});
-          
-          auto watchpoint = blockD.get(blockD.getNcells()-1);
-          watchpoint.template setField<fields::PHYS_R>(measurePhysR);
-          measureWatchpointR[0] = measureLatticeR[0];
-          measureWatchpointR[1] = blockD.getNcells()-1;
-        }
-        // if (loadBalancer.isLocal(referenceLatticeR[0])) {
-        //   auto& blockD = watchpointsD.getBlock(referenceLatticeR[0]);
-        //   blockD.resize({blockD.getNx()+1,1,1});
-        //   auto watchpoint = blockD.get(blockD.getNcells()-1);
-        //   watchpoint.template setField<fields::PHYS_R>(referencePhysR);
-        //   referenceWatchpointR[0] = referenceLatticeR[0];
-        //   referenceWatchpointR[1] = blockD.getNcells()-1;
-        // }
-        watchpointsD.setProcessingContext(ProcessingContext::Simulation);
-
-        SuperLatticePointCoupling pressureO(PressureO{},
-                                            names::NavierStokes{}, sLattice,
-                                            names::Points{}, watchpointsD);
-
-        CSV<T> csvWriter("AkkustikMessung", ';', {"iT", "t", "p"}, ".csv");
-      #endif
-      #ifdef FEATURE_REPORTER
-      if (measureWatchpointR[1] == 0 && singleton::mpi().getRank() == 0) {
-        std::cout << "[WARNUNG] Messpunkt wurde NICHT lokal gefunden! Druckwerte bleiben leer." << std::endl;
-      }
-      #endif
-
-     
-      
-
-
-   for (std::size_t iT=0; iT < iTmax; ++iT) {
-     // === 5th Step: Definition of Initial and Boundary Conditions ===
-     if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0);}
-     if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude, rho0);}
-    
-     
-     // ------------------------- Messwerte nehmen
-
-
-
-     //Original und angepasst:
-     #ifdef FEATURE_REPORTER
-       sLattice.setProcessingContext(ProcessingContext::Evaluation);  //Messkontext innerhalb der Messmethode setzen
-    
-     
-      pressureO.execute();
-      //measurements[0] = 0.0;
-
-      #ifdef FEATURE_REPORTER
-      
-        if (loadBalancer.isLocal(measureWatchpointR[0])) {
-          auto measureCell = watchpointsD.getBlock(loadBalancer.loc(measureWatchpointR[0]))
-                                        .get(measureWatchpointR[1]);
-          T measurePressure = measureCell.template getField<descriptors::SCALAR>();
-
-        //   std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
-        //             << "Gemessener Druck am Punkt ("
-        //             << measurePhysR[0] << ", "
-        //             << measurePhysR[1] << ", "
-        //             << measurePhysR[2] << ") (PU): "
-        //             << measurePressure << std::endl;
-         }
-    #endif
-      if (measureWatchpointR[1] == 0 && singleton::mpi().getRank() == 0) {
-        std::cout << "[WARNUNG] Messpunkt wurde NICHT lokal gefunden!" << std::endl;
-      }
-      watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
-      if (loadBalancer.isLocal(measureWatchpointR[0])) {
-        auto measureCell = watchpointsD.getBlock(loadBalancer.loc(measureWatchpointR[0]))
-                                      .get(measureWatchpointR[1]);
-        T measurePressure = measureCell.template getField<descriptors::SCALAR>();
-        measurements[0] = converter.getPhysPressure(measurePressure);
-      }
-      // if (loadBalancer.isLocal(referenceWatchpointR[0])) {
-      //   auto referenceCell = watchpointsD.getBlock(loadBalancer.loc(referenceWatchpointR[0]))
-      //                                    .get(referenceWatchpointR[1]);
-      //   T referencePressure = referenceCell.template getField<descriptors::SCALAR>();
-      //   measurements[1] += converter.getPhysPressure(referencePressure);
-      // }
-      std::vector<T> globalMeasurements(ndim);
-      #ifdef PARALLEL_MODE_MPI
-      singleton::mpi().reduceVect(measurements, globalMeasurements, MPI_SUM);
-      singleton::mpi().bCast(globalMeasurements.data(), globalMeasurements.size());
-      #else
-      globalMeasurements = measurements;
-      #endif
-      
-    // csvWriter.writeDataFile(iT, converter.getPhysTime(iT), globalMeasurements[0]);
-    
-      std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
-                    << "Gemessener Druck am Punkt ("
-                    << measurePhysR[0] << ", "
-                    << measurePhysR[1] << ", "
-                    << measurePhysR[2] << ") (PU): "
-                    << T{globalMeasurements[0]}<< std::endl;
-      // csvWriter.writeDataFile(iT, converter.getPhysTime(iT), T{globalMeasurements[0]});
-     // csvWriter.writeDataFile(T{iT}, converter.getPhysTime(iT), T{1.0});
-     csvWriter.writeDataFile(
-      T(iT),                                 
-      std::vector<T>{converter.getPhysTime(iT), T{globalMeasurements[0]}},  
-      "AkkustikMessung",                     // Dateiname
-      6                                      // Nachkommastellen
-  );
-     
-    #endif
-
-    
-
-    if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
-  // === 6th Step: Collide and Stream Execution ===
-     sLattice.collideAndStream();
-    // === 7th Step: Computation and Output of the Results ===
-        if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
-      
-
-
+    // ------------------------- Messwerte nehmen
+    std::vector<T> measurements(2);
+    pressureO.execute();
+    watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
+    if (loadBalancer.isLocal(measureWatchpointR[0])) {
+      auto measureCell = watchpointsD.getBlock(loadBalancer.loc(measureWatchpointR[0]))
+                                    .get(measureWatchpointR[1]);
+      T measurePressure = measureCell.template getField<descriptors::SCALAR>();
+      measurements[0] += converter.getPhysPressure(measurePressure);
     }
-  
-  //clout << "Simulation stopped after " << iT << "/" << maxLatticeT << " iterations." << std::endl;
+    std::vector<T> globalMeasurements(ndim);
 
-     
+    #ifdef PARALLEL_MODE_MPI
+    singleton::mpi().reduceVect(measurements, globalMeasurements, MPI_SUM);
+    singleton::mpi().bCast(globalMeasurements.data(), globalMeasurements.size());
+    #else
+    globalMeasurements = measurements;
+    #endif
+    csvWriter.writeDataFile(iT, std::vector<T>{converter.getPhysTime(iT), T{globalMeasurements[0]}});
+    
+    std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
+              << "Gemessener Druck am Punkt ("
+              << measurePhysR[0] << ", "
+              << measurePhysR[1] << ", "
+              << measurePhysR[2] << ") (PU): "
+              << T{globalMeasurements[0]}<< std::endl;
+        
+    if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
+    // === 6th Step: Collide and Stream Execution ===
+    sLattice.collideAndStream();
+    // === 7th Step: Computation and Output of the Results ===
+    if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
+    }
  
    timer.stop();
    timer.printSummary();
