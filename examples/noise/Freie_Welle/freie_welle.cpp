@@ -43,25 +43,6 @@ Terminalbefehl: make; ./cavity2d --iTmax 30*/
  
 
 
-// Messwerte nehmen
-#ifdef FEATURE_REPORTER
-struct PressureO {
-  static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
-
-  using parameters = meta::list<>;
-
-  template <typename CELLS, typename PARAMETERS>
-  void apply(CELLS& cells, PARAMETERS& parameters) any_platform
-  {
-    using V = typename CELLS::template value_t<names::NavierStokes>::value_t;
-    using DESCRIPTOR = typename CELLS::template value_t<names::NavierStokes>::descriptor_t;
-    auto particle = cells.template get<names::Points>();
-    const V rho = cells.template get<names::NavierStokes>().computeRho();
-    const V pressure = util::pressureFromDensity<V,DESCRIPTOR>(rho);
-    particle.template setField<descriptors::SCALAR>(pressure);
-  }
-};
-#endif
 
 
 
@@ -249,8 +230,27 @@ struct PressureO {
  }  // getGraphicalResults
  
  
- 
- 
+    
+    // Messwerte nehmen
+    #ifdef FEATURE_REPORTER
+    struct PressureO {
+      static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
+
+      using parameters = meta::list<>;
+
+      template <typename CELLS, typename PARAMETERS>
+      void apply(CELLS& cells, PARAMETERS& parameters) any_platform
+      {
+        using V = typename CELLS::template value_t<names::NavierStokes>::value_t;
+        using DESCRIPTOR = typename CELLS::template value_t<names::NavierStokes>::descriptor_t;
+        auto particle = cells.template get<names::Points>();
+        const V rho = cells.template get<names::NavierStokes>().computeRho();
+        const V pressure = util::pressureFromDensity<V,DESCRIPTOR>(rho);
+        particle.template setField<descriptors::SCALAR>(pressure);
+      }
+    };
+    #endif
+
  
  
  int main(int argc, char* argv[])
@@ -292,7 +292,8 @@ struct PressureO {
    Vector<T, ndim> measurePhysR;         
    Vector<int, 4> measureLatticeR{};     
    LatticeR<2> measureWatchpointR;
-    std::vector<T> measurements(2);
+    //std::vector<T> measurements(2);
+    std::vector<T> measurements(1);
     size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
     size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
     
@@ -342,7 +343,8 @@ struct PressureO {
    timer.start();
     // Zwischenschritt: Messwerte nehmen
     
-    // Messpunkt wird gesetzt und zu der nächsten Latticezelle gesetzt
+
+      //-----------Vorgegeben---
         #ifdef FEATURE_REPORTER
         measurePhysR = {0.01, 0.00, 0.00}; 
         
@@ -394,36 +396,28 @@ struct PressureO {
       }
       #endif
 
+     
+      
+
 
    for (std::size_t iT=0; iT < iTmax; ++iT) {
      // === 5th Step: Definition of Initial and Boundary Conditions ===
      if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0);}
      if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude, rho0);}
-     if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
-     // === 6th Step: Collide and Stream Execution ===
-     sLattice.collideAndStream();
+    
+     
      // ------------------------- Messwerte nehmen
-     #ifdef FEATURE_REPORTER
-      
-      pressureO.execute();
 
-      // // Hier wird der Latticedruck in die CSV Datei geschrieben
-      // T physPressurePU = 0.0;
-      // if (loadBalancer.isLocal(measureWatchpointR[0])) {
-      //   auto& measureBlock = watchpointsD.getBlock(loadBalancer.loc(measureWatchpointR[0]));
-      //   auto measureCell = measureBlock.get(measureWatchpointR[1]);
-      //   T rho = measureCell.template getField<descriptors::SCALAR>();
-      //   physPressurePU = converter.getPhysPressure(rho);
-      // }
-      // T physPressureGlobal = 0.0;
-      // #ifdef PARALLEL_MODE_MPI
-      // singleton::mpi().reduce(physPressurePU, physPressureGlobal, MPI_SUM);
-      // singleton::mpi().bCast(&physPressureGlobal, 1);
-      // #else
-      // physPressureGlobal = physPressurePU;
-      // #endif
-      // csvWriter.writeDataFile(iT, converter.getPhysTime(iT), physPressureGlobal);
-      // //------ Ende des Versuchs mit dem Latticedruck
+
+
+     //Original und angepasst:
+     #ifdef FEATURE_REPORTER
+       sLattice.setProcessingContext(ProcessingContext::Evaluation);  //Messkontext innerhalb der Messmethode setzen
+    
+     
+      pressureO.execute();
+      //measurements[0] = 0.0;
+
       #ifdef FEATURE_REPORTER
       
         if (loadBalancer.isLocal(measureWatchpointR[0])) {
@@ -447,7 +441,7 @@ struct PressureO {
         auto measureCell = watchpointsD.getBlock(loadBalancer.loc(measureWatchpointR[0]))
                                       .get(measureWatchpointR[1]);
         T measurePressure = measureCell.template getField<descriptors::SCALAR>();
-        measurements[0] += converter.getPhysPressure(measurePressure);
+        measurements[0] = converter.getPhysPressure(measurePressure);
       }
       // if (loadBalancer.isLocal(referenceWatchpointR[0])) {
       //   auto referenceCell = watchpointsD.getBlock(loadBalancer.loc(referenceWatchpointR[0]))
@@ -474,15 +468,19 @@ struct PressureO {
       // csvWriter.writeDataFile(iT, converter.getPhysTime(iT), T{globalMeasurements[0]});
      // csvWriter.writeDataFile(T{iT}, converter.getPhysTime(iT), T{1.0});
      csvWriter.writeDataFile(
-      T(iT),                                 // xWert
-      std::vector<T>{converter.getPhysTime(iT), T{globalMeasurements[0]}},  // yWert
+      T(iT),                                 
+      std::vector<T>{converter.getPhysTime(iT), T{globalMeasurements[0]}},  
       "AkkustikMessung",                     // Dateiname
       6                                      // Nachkommastellen
   );
-  
+     
     #endif
 
-  
+    
+
+    if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
+  // === 6th Step: Collide and Stream Execution ===
+     sLattice.collideAndStream();
     // === 7th Step: Computation and Output of the Results ===
         if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
       
