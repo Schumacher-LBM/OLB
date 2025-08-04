@@ -1,9 +1,9 @@
 
 /*Notiz: FREIE WELLE
-Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. Die Durchführung benötigt viel Zeit und ausgegeben wird ein Würfel, der auf 4 Seiten von innen nach außen eine Druckerhöhung erfährt. Die Ergebnisse sind nicht wie erwartet, aber ein erster Schritt.
+Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. 
 Bei dem ausführen des Programms muss mit --iTmax XXX eine Zahl angegeben werden, wieviele Iterationsdurchläufe das Programm durchläuft
-Terminalbefehl: make; ./cavity2d --iTmax 30*/
-
+Terminalbefehl: make clean; make; ./Freie_Welle --iTmax 150 --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden
+To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen finden. Außerdem die Größe des Mediums angeben. Messwerte nehmen
 /*  Lattice Boltzmann sample, written in C++, using the OpenLB
  *  library
  *
@@ -35,8 +35,8 @@ const T physDeltaX        = 0.02;   // grid spacing [m]
 const T physDeltaT        = 0.00078125;  // temporal spacing [s]
 const T physLength        = 1.0;         // length of the squared cuboid [m]
 const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s]
-const T physViscosity     = 0.005;        // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich
-const T physDensity       = 1.0;         // fluid density [kg/(m*m*m)]
+const T physViscosity     = 1.516e-5;;        // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich
+const T physDensity       = 1.2041;         // fluid density of air (20°C)[kg/(m*m*m)]
 const T physMaxT          = 0.5;        // maximal simulation time [s]
 
 typedef enum { periodic, local } BoundaryType;
@@ -272,7 +272,7 @@ int main(int argc, char* argv[])
   converter.print();
 
   // === 2nd Step: Prepare Geometry ===
-  BoundaryType boundarytype = local;
+  BoundaryType boundarytype = periodic;
   Vector<T,ndim> originFluid(-2, -0.01, -0.01);
   Vector<T,ndim> extendFluid(4, .02, .02);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
