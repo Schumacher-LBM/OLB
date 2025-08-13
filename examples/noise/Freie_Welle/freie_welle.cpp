@@ -32,13 +32,14 @@ using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, eq
 const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
 
 const T physDeltaX        = 0.02;   // grid spacing [m]
-const T physDeltaT        = 0.00078125;  // temporal spacing [s]
-const T physLength        = 1.0;         // length of the squared cuboid [m]
-const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s]
-const T physViscosity     = 1.516e-5;;        // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich
-const T physDensity       = 1.2041;         // fluid density of air (20°C)[kg/(m*m*m)]
+const T physLength        = 2.4;         // length of the cuboid [m]
+const T physspan          = 0.46;
+const T physwidth         = 0.46;
+const T physLidVelocity   = 1.;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
+const T physViscosity     = 15.32e-6;      // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich
+const T physDensity       = 1.189;         // fluid density of air (20°C)[kg/(m*m*m)]
 const T physMaxT          = 0.5;        // maximal simulation time [s]
-
+const T physDeltaT        = 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
 typedef enum { periodic, local } BoundaryType;
  
 
@@ -138,9 +139,9 @@ struct PressureO {
      auto domain = superGeometry.getMaterialIndicator({3});
  
      // 2 Sinusperioden in 40 Zeitschritten
-     T Kreisfrequenz = 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
+     T Kreisfrequenz = 2. * std::numbers::pi_v<T> / 1.2;//2./40.0;
      // optionaler Einschwingfaktor
-     T envelope = std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
+     T envelope =1;// std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
  
      // Sinus-Anregung
      AnalyticalConst3D<T,T> rhoF(1. + envelope * 1e-3 * std::sin(iT * Kreisfrequenz));
@@ -159,8 +160,8 @@ struct PressureO {
    if (boundarytype == periodic && iT==0) {
      auto domain = superGeometry.getMaterialIndicator({1});
     
-     T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0;
-     T wellenzahl=12.5;
+     T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0; // Theoretisch muesste die Kreisfrequenz bei 4 pi liegen (w=cs*k).  :40 wird gerechnet, weil 40 Iterationen getätigt werden sollen um auf 2 Perioden zu kommen
+     T wellenzahl=12.566; //k=2pi/lamda
      T phase =0.;
      //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
      T time= iT;
@@ -173,18 +174,18 @@ struct PressureO {
  
  
       // Hier wird die Geschwindigkeit im Terminal ausgegeben
-      Vector<T,3> punkt = {0.01, 0.0, 0.0};  // Punkt, an dem ausgewertet wird
-      T u[3];  // Ergebnis wird hier gespeichert
-      schallquelle_geschwindigkeit(u, punkt.data());
-      std::cout << "[iT=" << iT << ", t=" << time << "s] Geschwindigkeit an "<<punkt<<": "
-      << "u = (" << u[0] << ", " << u[1] << ", " << u[2] << ")\n";
+    //   Vector<T,3> punkt = {0.01, 0.0, 0.0};  // Punkt, an dem ausgewertet wird
+    //   T u[3];  // Ergebnis wird hier gespeichert
+    //   schallquelle_geschwindigkeit(u, punkt.data());
+    //   std::cout << "[iT=" << iT << ", t=" << time << "s] Geschwindigkeit an "<<punkt<<": "
+    //   << "u = (" << u[0] << ", " << u[1] << ", " << u[2] << ")\n";
 
-     // Hier wird der Druck im Terminal ausgegeben
+    //  // Hier wird der Druck im Terminal ausgegeben
      
-     T p[3];  // Ergebnis wird hier gespeichert
-     schallquelle(p, punkt.data());
-     std::cout << "[iT=" << iT << ", t=" << time << "s] Druck an "<<punkt<<": "
-     << "rho = (" << p[0] << ", " << p[1] << ", " << p[2] << ")\n";
+    //  T p[3];  // Ergebnis wird hier gespeichert
+    //  schallquelle(p, punkt.data());
+    //  std::cout << "[iT=" << iT << ", t=" << time << "s] Druck an "<<punkt<<": "
+    //  << "rho = (" << p[0] << ", " << p[1] << ", " << p[2] << ")\n";
  
      // sLattice.defineRhoU(domain, schallquelle, uInf);
      // sLattice.iniEquilibrium(domain, schallquelle, uInf);
@@ -273,16 +274,16 @@ int main(int argc, char* argv[])
 
   // === 2nd Step: Prepare Geometry ===
   BoundaryType boundarytype = periodic;
-  Vector<T,ndim> originFluid(-2, -0.01, -0.01);
-  Vector<T,ndim> extendFluid(4, .02, .02);
+  Vector<T,ndim> originFluid(0., 0., 0.);
+  Vector<T,ndim> extendFluid(physLength, physwidth, physspan);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
   // -----------Variabeln definiere Messungen
   size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
   size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
     
   //-----------------------------
-  Vector<T,ndim> extend{4, .02, .02};
-  Vector<T,ndim> origin{-2, -0.01, -0.01};
+  Vector<T,ndim> extend{physLength, physwidth, physspan};
+  Vector<T,ndim> origin{0., 0., 0.};
   IndicatorCuboid3D<T> cuboid(extend, origin);
   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
   cuboidDecomposition.setPeriodicity({true,true,true});
@@ -298,6 +299,7 @@ int main(int argc, char* argv[])
   T dampingDepthPU = 0.1;
   T lengthDomain = physLength;
   T dampingStrength = 1.0;
+  T Messpunkt =0.;
  
   SuperLattice<T,DESCRIPTOR> sLattice(superGeometry);
   prepareLattice( converter, sLattice, superGeometry, rho0, u0, amplitude, alpha,
@@ -306,7 +308,7 @@ int main(int argc, char* argv[])
   // === 4th Step: Main Loop with Timer ===
   std::size_t iTmax = converter.getLatticeTime(physMaxT);
   if ( maxLatticeT != 0 ) iTmax = maxLatticeT;
-  T vtkanzahl=iTmax;///10.;//*10.;
+ // T vtkanzahl=iTmax;///10.;//*10.;
   std::size_t iTvtk = 1;//int(std::max(iTmax/vtkanzahl, 1.));
   std::size_t iTtimer = int(std::max(iTmax/20., 1.));
   // === calculate output intervals
@@ -325,7 +327,7 @@ int main(int argc, char* argv[])
   // Vector<T,ndim> measurePhysR{-0.0875,0.0052};
   // Vector<int,3> measureLatticeR{};
   //#elif defined(FEATURE_THREED)
-  Vector<T,ndim> measurePhysR{-0.5,0.00,0.00};
+  Vector<T,ndim> measurePhysR{566.00,0.00,Messpunkt};
   Vector<int,4> measureLatticeR{};
   //#endif
   // get nearest lattice point to measurePhysR
@@ -361,12 +363,21 @@ int main(int argc, char* argv[])
     std::cout << "[WARNUNG] Messpunkt wurde NICHT lokal gefunden! Druckwerte bleiben leer." << std::endl;
   }
   if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, 0, superGeometry, boundarytype, amplitude, rho0);}
-
+  //--------------------------------------- FOR SCHLEIFE-------------------------------------------------------------------------------------------
   for (std::size_t iT=0; iT < iTmax; ++iT) {
     // === 5th Step: Definition of Initial and Boundary Conditions ===
     if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0);}
     
     // ------------------------- Messwerte nehmen
+
+
+
+
+
+
+
+
+
     std::vector<T> measurements(1);
     pressureO.execute();
     watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
@@ -386,14 +397,22 @@ int main(int argc, char* argv[])
     #endif
     csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), T{globalMeasurements[0]}});
     
-    std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
-              << "Gemessener Druck am Punkt ("
-              << measurePhysR[0] << ", "
-              << measurePhysR[1] << ", "
-              << measurePhysR[2] << ") (PU): "
-              << T{globalMeasurements[0]}<< std::endl;
+    // std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
+    //           << "Gemessener Druck am Punkt ("
+    //           << measurePhysR[0] << ", "
+    //           << measurePhysR[1] << ", "
+    //           << measurePhysR[2] << ") (PU): "
+    //           << T{globalMeasurements[0]}<< std::endl;
+
+
+
         
     if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
+
+
+
+
+
     // === 6th Step: Collide and Stream Execution ===
     sLattice.collideAndStream();
     // === 7th Step: Computation and Output of the Results ===
