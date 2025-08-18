@@ -141,10 +141,10 @@ struct PressureO {
      // 2 Sinusperioden in 40 Zeitschritten
      T Kreisfrequenz = 2. * std::numbers::pi_v<T> / 1.2;//2./40.0;
      // optionaler Einschwingfaktor
-     T envelope =1;// std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
+     T envelope =std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
  
      // Sinus-Anregung
-     AnalyticalConst3D<T,T> rhoF(1. + envelope * 1e-3 * std::sin(iT * Kreisfrequenz));
+     AnalyticalConst3D<T,T> rhoF(1. + envelope * 1e-3 * std::sin(iT * Kreisfrequenz)); // Hier überprüfen ob das nicht eine Amplitude ist!
      AnalyticalConst3D<T,T> uInf(0., 0., 0.);
     
       if(iT==0)
@@ -161,7 +161,7 @@ struct PressureO {
      auto domain = superGeometry.getMaterialIndicator({1});
     
      T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0; // Theoretisch muesste die Kreisfrequenz bei 4 pi liegen (w=cs*k).  :40 wird gerechnet, weil 40 Iterationen getätigt werden sollen um auf 2 Perioden zu kommen
-     T wellenzahl=12.566; //k=2pi/lamda
+     T wellenzahl=2. * std::numbers::pi_v<T>/0.6 ;//k=2pi/lamda
      T phase =0.;
      //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
      T time= iT;
@@ -194,56 +194,56 @@ struct PressureO {
    }
  } //setBoundaryValues
  
- void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T, DESCRIPTOR> const& converter,
-   size_t iT, SuperGeometry<T, ndim>& superGeometry, T amplitude)
- {
-     const std::string name("Schallquelle");
-     if (iT == 0) {
-       SuperVTMwriter3D<T> vtmWriter(name);
-       // Writes geometry, cuboid no. and rank no. to file system
-       SuperLatticeCuboid3D<T, DESCRIPTOR> cuboid(sLattice);
-       SuperLatticeRank3D<T, DESCRIPTOR>   rank(sLattice);
-       vtmWriter.write(cuboid);
-       vtmWriter.write(rank);
-       vtmWriter.createMasterFile();
-     }  // iT==0
+//  void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T, DESCRIPTOR> const& converter,
+//    size_t iT, SuperGeometry<T, ndim>& superGeometry, T amplitude)
+//  {
+//      const std::string name("Schallquelle");
+//      if (iT == 0) {
+//        SuperVTMwriter3D<T> vtmWriter(name);
+//        // Writes geometry, cuboid no. and rank no. to file system
+//        SuperLatticeCuboid3D<T, DESCRIPTOR> cuboid(sLattice);
+//        SuperLatticeRank3D<T, DESCRIPTOR>   rank(sLattice);
+//        vtmWriter.write(cuboid);
+//        vtmWriter.write(rank);
+//        vtmWriter.createMasterFile();
+//      }  // iT==0
  
-     sLattice.setProcessingContext(ProcessingContext::Evaluation);
+//      sLattice.setProcessingContext(ProcessingContext::Evaluation);
  
-     // vtk output
-     sLattice.scheduleBackgroundOutputVTK([&, name, iT](auto task) {
-     SuperVTMwriter3D<T>        vtmWriter(name);
-     SuperLatticePhysVelocity3D velocityF(sLattice, converter);
-     SuperLatticePhysPressure3D pressureF(sLattice, converter);
-     vtmWriter.addFunctor(velocityF);
-     vtmWriter.addFunctor(pressureF);
-     task(vtmWriter, iT);
-     });  // scheduleBackgroundOutputVTK
+//      // vtk output
+//      sLattice.scheduleBackgroundOutputVTK([&, name, iT](auto task) {
+//      SuperVTMwriter3D<T>        vtmWriter(name);
+//      SuperLatticePhysVelocity3D velocityF(sLattice, converter);
+//      SuperLatticePhysPressure3D pressureF(sLattice, converter);
+//      vtmWriter.addFunctor(velocityF);
+//      vtmWriter.addFunctor(pressureF);
+//      task(vtmWriter, iT);
+//      });  // scheduleBackgroundOutputVTK
  
-     //output pressure image
-     SuperLatticePhysPressure3D<T, DESCRIPTOR> pressure(sLattice, converter);
-     BlockReduction3D2D<T>                     pressureReduction(pressure, Vector<T, ndim>({0, 0, 1}));
-     heatmap::plotParam<T>                     jpeg_ParamP;
-     jpeg_ParamP.maxValue       = converter.getPhysPressure(+amplitude / 200);
-     jpeg_ParamP.minValue       = converter.getPhysPressure(-amplitude / 200);
-     jpeg_ParamP.colour         = "rainbow";
-     jpeg_ParamP.fullScreenPlot = true;
-     heatmap::write(pressureReduction, iT, jpeg_ParamP);
+//      //output pressure image
+//      SuperLatticePhysPressure3D<T, DESCRIPTOR> pressure(sLattice, converter);
+//      BlockReduction3D2D<T>                     pressureReduction(pressure, Vector<T, ndim>({0, 0, 1}));
+//      heatmap::plotParam<T>                     jpeg_ParamP;
+//      jpeg_ParamP.maxValue       = converter.getPhysPressure(+amplitude / 200);
+//      jpeg_ParamP.minValue       = converter.getPhysPressure(-amplitude / 200);
+//      jpeg_ParamP.colour         = "rainbow";
+//      jpeg_ParamP.fullScreenPlot = true;
+//      heatmap::write(pressureReduction, iT, jpeg_ParamP);
  
-     std::stringstream ss;
-     ss << std::setw(4) << std::setfill('0') << iT;
-     T                          dist        = converter.getPhysDeltaX();
-     T                          ndatapoints = converter.getResolution(); // number of data points on line
-     AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
-     T                          pmin(converter.getPhysPressure(-amplitude / 50));
-     T                          pmax(converter.getPhysPressure(+amplitude / 50));
-     linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
-                       horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
-     //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
-     //                    false, true, pmin, pmax);
-     // linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
-     //                     diagonal2d, false, false, pmin, pmax);
- }  // getGraphicalResults
+//      std::stringstream ss;
+//      ss << std::setw(4) << std::setfill('0') << iT;
+//      T                          dist        = converter.getPhysDeltaX();
+//      T                          ndatapoints = converter.getResolution(); // number of data points on line
+//      AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
+//      T                          pmin(converter.getPhysPressure(-amplitude / 50));
+//      T                          pmax(converter.getPhysPressure(+amplitude / 50));
+//      linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
+//                        horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
+//      //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
+//      //                    false, true, pmin, pmax);
+//      // linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
+//      //                     diagonal2d, false, false, pmin, pmax);
+//  }  // getGraphicalResults
  
  
 int main(int argc, char* argv[])
@@ -274,7 +274,7 @@ int main(int argc, char* argv[])
 
   // === 2nd Step: Prepare Geometry ===
   BoundaryType boundarytype = periodic;
-  Vector<T,ndim> originFluid(0., 0., 0.);
+  Vector<T,ndim> originFluid(-physLength/2., -physwidth/2., -physspan/2.);
   Vector<T,ndim> extendFluid(physLength, physwidth, physspan);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
   // -----------Variabeln definiere Messungen
@@ -283,7 +283,7 @@ int main(int argc, char* argv[])
     
   //-----------------------------
   Vector<T,ndim> extend{physLength, physwidth, physspan};
-  Vector<T,ndim> origin{0., 0., 0.};
+  Vector<T,ndim> origin{-physLength/2., -physwidth/2., -physspan/2.};
   IndicatorCuboid3D<T> cuboid(extend, origin);
   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
   cuboidDecomposition.setPeriodicity({true,true,true});
@@ -293,13 +293,12 @@ int main(int argc, char* argv[])
   prepareGeometry(converter, superGeometry, domainFluid, boundarytype);
 
   // === 3rd Step: Prepare Lattice ===
-  T rho0 = 1.0; // Koennte diese Stelle das Problem sein?
+  T rho0 = 1.0; 
   T u0 = converter.getCharLatticeVelocity();
   T alpha = 0.314;  // oder berechnet aus einem Pulsparameter
   T dampingDepthPU = 0.1;
   T lengthDomain = physLength;
   T dampingStrength = 1.0;
-  T Messpunkt =0.;
  
   SuperLattice<T,DESCRIPTOR> sLattice(superGeometry);
   prepareLattice( converter, sLattice, superGeometry, rho0, u0, amplitude, alpha,
@@ -327,7 +326,7 @@ int main(int argc, char* argv[])
   // Vector<T,ndim> measurePhysR{-0.0875,0.0052};
   // Vector<int,3> measureLatticeR{};
   //#elif defined(FEATURE_THREED)
-  Vector<T,ndim> measurePhysR{566.00,0.00,Messpunkt};
+  Vector<T,ndim> measurePhysR{0.566,0.0,0.230};
   Vector<int,4> measureLatticeR{};
   //#endif
   // get nearest lattice point to measurePhysR
@@ -357,7 +356,7 @@ int main(int argc, char* argv[])
                                       names::NavierStokes{}, sLattice,
                                       names::Points{}, watchpointsD);
 
-  CSV<T> csvWriter("gausspulsePressure", ';', {"iT", "t", "p"}, ".csv");
+  CSV<T> csvWriter("Welle", ';', {"iT", "t", "p"}, ".csv");
 
   if (measureWatchpointR[1] == 0 && singleton::mpi().getRank() == 0) {
     std::cout << "[WARNUNG] Messpunkt wurde NICHT lokal gefunden! Druckwerte bleiben leer." << std::endl;
@@ -369,14 +368,6 @@ int main(int argc, char* argv[])
     if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0);}
     
     // ------------------------- Messwerte nehmen
-
-
-
-
-
-
-
-
 
     std::vector<T> measurements(1);
     pressureO.execute();
@@ -397,6 +388,9 @@ int main(int argc, char* argv[])
     #endif
     csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), T{globalMeasurements[0]}});
     
+     
+    
+
     // std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
     //           << "Gemessener Druck am Punkt ("
     //           << measurePhysR[0] << ", "
@@ -404,10 +398,8 @@ int main(int argc, char* argv[])
     //           << measurePhysR[2] << ") (PU): "
     //           << T{globalMeasurements[0]}<< std::endl;
 
-
-
         
-    if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
+    // if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
 
 
 
