@@ -35,11 +35,11 @@ const T physDeltaX        = 0.02;   // grid spacing [m]
 const T physLength        = 2.4;         // length of the cuboid [m]
 const T physspan          = 0.46;
 const T physwidth         = 0.46;
-const T physLidVelocity   = 1.;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
-const T physViscosity     = 15.32e-6;      // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich
+const T physLidVelocity   = 0.57735;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
+const T physViscosity     = 0.001392;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich
 const T physDensity       = 1.189;         // fluid density of air (20°C)[kg/(m*m*m)]
 const T physMaxT          = 0.5;        // maximal simulation time [s]
-const T physDeltaT        = 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
+const T physDeltaT        = physDeltaX / 343.46;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
 typedef enum { periodic, local } BoundaryType;
  
 
@@ -139,7 +139,7 @@ struct PressureO {
      auto domain = superGeometry.getMaterialIndicator({3});
  
      // 2 Sinusperioden in 40 Zeitschritten
-     T Kreisfrequenz = 2. * std::numbers::pi_v<T> / 1.2;//2./40.0;
+     T Kreisfrequenz = 2. * std::numbers::pi_v<T> /40.0;
      // optionaler Einschwingfaktor
      T envelope =std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
  
@@ -160,8 +160,8 @@ struct PressureO {
    if (boundarytype == periodic && iT==0) {
      auto domain = superGeometry.getMaterialIndicator({1});
     
-     T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0; // Theoretisch muesste die Kreisfrequenz bei 4 pi liegen (w=cs*k).  :40 wird gerechnet, weil 40 Iterationen getätigt werden sollen um auf 2 Perioden zu kommen
-     T wellenzahl=2. * std::numbers::pi_v<T>/0.6 ;//k=2pi/lamda
+     T wellenzahl=2. * std::numbers::pi_v<T>/0.7 ;//k=2pi/lamda
+     T kreisfrequenz= 343.45*wellenzahl;//2. * std::numbers::pi_v<T> * 2.0 / 40.0; // Theoretisch muesste die Kreisfrequenz bei 4 pi liegen (w=cs*k).  :40 wird gerechnet, weil 40 Iterationen getätigt werden sollen um auf 2 Perioden zu kommen
      T phase =0.;
      //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
      T time= iT;
@@ -399,7 +399,7 @@ int main(int argc, char* argv[])
     //           << T{globalMeasurements[0]}<< std::endl;
 
         
-    // if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
+    //if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
 
 
 
