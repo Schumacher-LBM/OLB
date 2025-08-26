@@ -32,14 +32,14 @@ using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, eq
 const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
 
 const T physDeltaX        = 0.02;   // grid spacing [m]
-const T physLength        = 2.4;         // length of the cuboid [m]
+const T physLength        = 1.;         // length of the cuboid [m]
 const T physspan          = 0.46;
 const T physwidth         = 0.46;
-const T physLidVelocity   = 0.57735;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
-const T physViscosity     = 0.001392;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich
-const T physDensity       = 1.189;         // fluid density of air (20°C)[kg/(m*m*m)]
+const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
+const T physViscosity     = 1.5e-5;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
+const T physDensity       = 1.;         // fluid density of air (20°C)[kg/(m*m*m)]
 const T physMaxT          = 0.5;        // maximal simulation time [s]
-const T physDeltaT        = physDeltaX / 343.46;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
+const T physDeltaT        = 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
 typedef enum { periodic, local } BoundaryType;
  
 
@@ -86,7 +86,7 @@ struct PressureO {
      
    case local: {
     superGeometry.rename(2, 1);
-    Vector<T,3> center(0., 0.,0.); // Zentrum der Welle
+    Vector<T,3> center(-physLength*2.4/2., 0., 0.); // Zentrum der Welle
     T radius = dx;
     IndicatorSphere3D<T> pointSource(center, radius);
     superGeometry.rename(1,3,pointSource);
@@ -160,8 +160,8 @@ struct PressureO {
    if (boundarytype == periodic && iT==0) {
      auto domain = superGeometry.getMaterialIndicator({1});
     
-     T wellenzahl=2. * std::numbers::pi_v<T>/0.7 ;//k=2pi/lamda
-     T kreisfrequenz= 343.45*wellenzahl;//2. * std::numbers::pi_v<T> * 2.0 / 40.0; // Theoretisch muesste die Kreisfrequenz bei 4 pi liegen (w=cs*k).  :40 wird gerechnet, weil 40 Iterationen getätigt werden sollen um auf 2 Perioden zu kommen
+     T wellenzahl=2. * std::numbers::pi_v<T>/0.5 ;//k=2pi/lamda
+     T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0; // Theoretisch muesste die Kreisfrequenz bei 4 pi liegen (w=cs*k).  :40 wird gerechnet, weil 40 Iterationen getätigt werden sollen um auf 2 Perioden zu kommen
      T phase =0.;
      //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
      T time= iT;
@@ -194,56 +194,56 @@ struct PressureO {
    }
  } //setBoundaryValues
  
-//  void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T, DESCRIPTOR> const& converter,
-//    size_t iT, SuperGeometry<T, ndim>& superGeometry, T amplitude)
-//  {
-//      const std::string name("Schallquelle");
-//      if (iT == 0) {
-//        SuperVTMwriter3D<T> vtmWriter(name);
-//        // Writes geometry, cuboid no. and rank no. to file system
-//        SuperLatticeCuboid3D<T, DESCRIPTOR> cuboid(sLattice);
-//        SuperLatticeRank3D<T, DESCRIPTOR>   rank(sLattice);
-//        vtmWriter.write(cuboid);
-//        vtmWriter.write(rank);
-//        vtmWriter.createMasterFile();
-//      }  // iT==0
+ void getGraphicalResults(SuperLattice<T, DESCRIPTOR>& sLattice, UnitConverter<T, DESCRIPTOR> const& converter,
+   size_t iT, SuperGeometry<T, ndim>& superGeometry, T amplitude)
+ {
+     const std::string name("Schallquelle");
+     if (iT == 0) {
+       SuperVTMwriter3D<T> vtmWriter(name);
+       // Writes geometry, cuboid no. and rank no. to file system
+       SuperLatticeCuboid3D<T, DESCRIPTOR> cuboid(sLattice);
+       SuperLatticeRank3D<T, DESCRIPTOR>   rank(sLattice);
+       vtmWriter.write(cuboid);
+       vtmWriter.write(rank);
+       vtmWriter.createMasterFile();
+     }  // iT==0
  
-//      sLattice.setProcessingContext(ProcessingContext::Evaluation);
+     sLattice.setProcessingContext(ProcessingContext::Evaluation);
  
-//      // vtk output
-//      sLattice.scheduleBackgroundOutputVTK([&, name, iT](auto task) {
-//      SuperVTMwriter3D<T>        vtmWriter(name);
-//      SuperLatticePhysVelocity3D velocityF(sLattice, converter);
-//      SuperLatticePhysPressure3D pressureF(sLattice, converter);
-//      vtmWriter.addFunctor(velocityF);
-//      vtmWriter.addFunctor(pressureF);
-//      task(vtmWriter, iT);
-//      });  // scheduleBackgroundOutputVTK
+     // vtk output
+     sLattice.scheduleBackgroundOutputVTK([&, name, iT](auto task) {
+     SuperVTMwriter3D<T>        vtmWriter(name);
+     SuperLatticePhysVelocity3D velocityF(sLattice, converter);
+     SuperLatticePhysPressure3D pressureF(sLattice, converter);
+     vtmWriter.addFunctor(velocityF);
+     vtmWriter.addFunctor(pressureF);
+     task(vtmWriter, iT);
+     });  // scheduleBackgroundOutputVTK
  
-//      //output pressure image
-//      SuperLatticePhysPressure3D<T, DESCRIPTOR> pressure(sLattice, converter);
-//      BlockReduction3D2D<T>                     pressureReduction(pressure, Vector<T, ndim>({0, 0, 1}));
-//      heatmap::plotParam<T>                     jpeg_ParamP;
-//      jpeg_ParamP.maxValue       = converter.getPhysPressure(+amplitude / 200);
-//      jpeg_ParamP.minValue       = converter.getPhysPressure(-amplitude / 200);
-//      jpeg_ParamP.colour         = "rainbow";
-//      jpeg_ParamP.fullScreenPlot = true;
-//      heatmap::write(pressureReduction, iT, jpeg_ParamP);
+     //output pressure image
+     SuperLatticePhysPressure3D<T, DESCRIPTOR> pressure(sLattice, converter);
+     BlockReduction3D2D<T>                     pressureReduction(pressure, Vector<T, ndim>({0, 0, 1}));
+     heatmap::plotParam<T>                     jpeg_ParamP;
+     jpeg_ParamP.maxValue       = converter.getPhysPressure(+amplitude / 200);
+     jpeg_ParamP.minValue       = converter.getPhysPressure(-amplitude / 200);
+     jpeg_ParamP.colour         = "rainbow";
+     jpeg_ParamP.fullScreenPlot = true;
+     heatmap::write(pressureReduction, iT, jpeg_ParamP);
  
-//      std::stringstream ss;
-//      ss << std::setw(4) << std::setfill('0') << iT;
-//      T                          dist        = converter.getPhysDeltaX();
-//      T                          ndatapoints = converter.getResolution(); // number of data points on line
-//      AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
-//      T                          pmin(converter.getPhysPressure(-amplitude / 50));
-//      T                          pmax(converter.getPhysPressure(+amplitude / 50));
-//      linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
-//                        horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
-//      //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
-//      //                    false, true, pmin, pmax);
-//      // linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
-//      //                     diagonal2d, false, false, pmin, pmax);
-//  }  // getGraphicalResults
+     std::stringstream ss;
+     ss << std::setw(4) << std::setfill('0') << iT;
+     T                          dist        = converter.getPhysDeltaX();
+     T                          ndatapoints = converter.getResolution(); // number of data points on line
+     AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
+     T                          pmin(converter.getPhysPressure(-amplitude / 50));
+     T                          pmax(converter.getPhysPressure(+amplitude / 50));
+     linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
+                       horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
+     //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
+     //                    false, true, pmin, pmax);
+     // linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_diagonal_" + ss.str(), "pressure [PU]",
+     //                     diagonal2d, false, false, pmin, pmax);
+ }  // getGraphicalResults
  
  
 int main(int argc, char* argv[])
@@ -273,17 +273,17 @@ int main(int argc, char* argv[])
   converter.print();
 
   // === 2nd Step: Prepare Geometry ===
-  BoundaryType boundarytype = periodic;
-  Vector<T,ndim> originFluid(-physLength/2., -physwidth/2., -physspan/2.);
-  Vector<T,ndim> extendFluid(physLength, physwidth, physspan);
+  BoundaryType boundarytype = local;
+  Vector<T,ndim> originFluid(-physLength*2.4/2., -physwidth/2., -physspan/2.);
+  Vector<T,ndim> extendFluid(physLength*2.4, physwidth, physspan);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
   // -----------Variabeln definiere Messungen
   size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
   size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
     
   //-----------------------------
-  Vector<T,ndim> extend{physLength, physwidth, physspan};
-  Vector<T,ndim> origin{-physLength/2., -physwidth/2., -physspan/2.};
+  Vector<T,ndim> extend{physLength*2.4, physwidth, physspan};
+  Vector<T,ndim> origin{-physLength*2.4/2., -physwidth/2., -physspan/2.};
   IndicatorCuboid3D<T> cuboid(extend, origin);
   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
   cuboidDecomposition.setPeriodicity({true,true,true});
@@ -399,7 +399,7 @@ int main(int argc, char* argv[])
     //           << T{globalMeasurements[0]}<< std::endl;
 
         
-    //if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
+    if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
 
 
 
