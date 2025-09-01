@@ -21,6 +21,9 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
 #include "SchallwelleGeschwindigkeit.h"
 #include "SchallwelleDichte.h"
 #include "functors/analytical/analyticalF.hh"
+#include <array>   // NEU, für std::array
+#include <cmath>   // falls nicht schon vorhanden (atan2, cos, sin, sqrt)
+
 
 using namespace olb;
 
@@ -132,14 +135,14 @@ struct PressureO {
  
  void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
    SuperLattice<T, DESCRIPTOR>& sLattice,
-   std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude, T rho0)
+   std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude, T rho0, T lambda_phys)
  {
  
    if (boundarytype == local) {
      auto domain = superGeometry.getMaterialIndicator({3});
  
      // 2 Sinusperioden in 40 Zeitschritten
-     T Kreisfrequenz = 2. * std::numbers::pi_v<T> /40.0;
+     T Kreisfrequenz = 2. * std::numbers::pi_v<T> /40.0;  // WENN DU DAS AENDERST, MUSST DU ES AUCH IN DER MAIN AENDERN!!!
      // optionaler Einschwingfaktor
      T envelope =std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
  
@@ -160,7 +163,7 @@ struct PressureO {
    if (boundarytype == periodic && iT==0) {
      auto domain = superGeometry.getMaterialIndicator({1});
     
-     T wellenzahl=2. * std::numbers::pi_v<T>/0.5 ;//k=2pi/lamda
+     T wellenzahl=2. * std::numbers::pi_v<T>/lambda_phys ;//k=2pi/lamda
      T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0; // Theoretisch muesste die Kreisfrequenz bei 4 pi liegen (w=cs*k).  :40 wird gerechnet, weil 40 Iterationen getätigt werden sollen um auf 2 Perioden zu kommen
      T phase =0.;
      //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
@@ -271,9 +274,26 @@ int main(int argc, char* argv[])
     physDensity        // physDensity: physical density [kg/m^3]
   );
   converter.print();
+  // --- Wellenzahl in physikalischen und lattice Einheiten ---
+  // Nutze dieselbe λ bzw. wellenzahl wie in setBoundaryValues (hier: λ_phys = 0.5 m)
+  
+  const T lambda_phys = T(0.5);                 
+  const T k_phys = 2.*std::numbers::pi_v<T> / lambda_phys;         // [rad/m]
+  const T k_lat  = k_phys * converter.getPhysDeltaX(); // [rad per lattice cell]
+  const T k2_lat = k_lat * k_lat;
+
+  // theoretisches c_s (lattice und physisch)
+  const T cs_lat  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());          // ≈ 1/√3
+  const T cs_phys = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * cs_lat;  // nur Info
+
+
+
+
+
+
 
   // === 2nd Step: Prepare Geometry ===
-  BoundaryType boundarytype = local;
+  BoundaryType boundarytype = periodic;
   Vector<T,ndim> originFluid(-physLength*2.4/2., -physwidth/2., -physspan/2.);
   Vector<T,ndim> extendFluid(physLength*2.4, physwidth, physspan);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
@@ -281,7 +301,7 @@ int main(int argc, char* argv[])
   size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
   size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
     
-  //-----------------------------
+  //----------------------------- Geometrie aufspannen
   Vector<T,ndim> extend{physLength*2.4, physwidth, physspan};
   Vector<T,ndim> origin{-physLength*2.4/2., -physwidth/2., -physspan/2.};
   IndicatorCuboid3D<T> cuboid(extend, origin);
@@ -321,75 +341,131 @@ int main(int argc, char* argv[])
 
    util::Timer<T> timer(iTmax, superGeometry.getStatistics().getNvoxel());
    timer.start();
-  // Zwischenschritt: Messwerte nehmen //-----------Vorgegeben---
+  // ---------------------------------------Zwischenschritt: Messwerte nehmen //-----------Vorgegeben---
   // #if defined(FEATURE_TWOD)
   // Vector<T,ndim> measurePhysR{-0.0875,0.0052};
   // Vector<int,3> measureLatticeR{};
   //#elif defined(FEATURE_THREED)
-  Vector<T,ndim> measurePhysR{0.566,0.0,0.230};
-  Vector<int,4> measureLatticeR{};
-  //#endif
-  // get nearest lattice point to measurePhysR
-  if (auto latticeR = cuboidDecomposition.getLatticeR(measurePhysR)) {
-    measureLatticeR = *latticeR;
-  }
-  LatticeR<2> measureWatchpointR;
-  // #if defined(FEATURE_TWOD)
-  // SuperD<T,descriptors::D2<fields::PHYS_R,descriptors::SCALAR>> watchpointsD(loadBalancer);
-  // #elif defined(FEATURE_THREED)
+  // --- Messpunkte in physikalischen Koordinaten (m)
+  // --- Zwei Messpunkte in physikalischen Koordinaten (m)
+  std::array<Vector<T,ndim>,2> measurePhysR = {
+    Vector<T,ndim>{0.566, 0.0, 0.230},
+    Vector<T,ndim>{0.586, 0.0, 0.230}
+  };
+  std::array<Vector<int,4>,2> measureLatticeR{};
+
   SuperD<T,descriptors::D3<fields::PHYS_R,descriptors::SCALAR>> watchpointsD(loadBalancer);
-  if (loadBalancer.isLocal(measureLatticeR[0])) {
-    auto& blockD = watchpointsD.getBlock(measureLatticeR[0]);
-    // #if defined(FEATURE_TWOD)
-    // blockD.resize({blockD.getNx()+1,1,1});
-    // #elif defined(FEATURE_THREED)
-    blockD.resize({blockD.getNx()+1,1,1});
-    //#endif
-    auto watchpoint = blockD.get(blockD.getNcells()-1);
-    watchpoint.template setField<fields::PHYS_R>(measurePhysR);
-    measureWatchpointR[0] = measureLatticeR[0];
-    measureWatchpointR[1] = blockD.getNcells()-1;
+
+  for (int k=0; k<2; ++k) {
+    if (auto latticeR = cuboidDecomposition.getLatticeR(measurePhysR[k])) {
+      measureLatticeR[k] = *latticeR;
+
+      if (loadBalancer.isLocal(measureLatticeR[k][0])) {
+        auto& blockD = watchpointsD.getBlock(measureLatticeR[k][0]);
+        // Platz schaffen: 1 Zelle je Watchpoint am Blockende
+        blockD.resize({blockD.getNx()+1,1,1});
+        auto watchpoint = blockD.get(blockD.getNcells()-1);
+        watchpoint.template setField<fields::PHYS_R>(measurePhysR[k]);
+
+        // Lokalen Zellenindex merken (wir nutzen measureLatticeR[k][1] dafür)
+        measureLatticeR[k][1] = blockD.getNcells()-1;
+      }
+    } else if (singleton::mpi().getRank()==0) {
+      std::cout << "[WARNUNG] Messpunkt " << k << " wurde NICHT lokal gefunden!\n";
+    }
   }
+
   watchpointsD.setProcessingContext(ProcessingContext::Simulation);
 
+  // Kopplung: schreibt den berechneten Druck in die Watchpoints
   SuperLatticePointCoupling pressureO(PressureO{},
                                       names::NavierStokes{}, sLattice,
                                       names::Points{}, watchpointsD);
 
-  CSV<T> csvWriter("Welle", ';', {"iT", "t", "p"}, ".csv");
+  // Zeitreihen und Konstanten für spätere Auswertung
+  std::vector<T> p1, p2; 
+  p1.reserve(iTmax); 
+  p2.reserve(iTmax);
 
-  if (measureWatchpointR[1] == 0 && singleton::mpi().getRank() == 0) {
-    std::cout << "[WARNUNG] Messpunkt wurde NICHT lokal gefunden! Druckwerte bleiben leer." << std::endl;
+  const T dtPhys = converter.getPhysDeltaT();
+  // oben sicherstellen: #include <cmath>
+  const T dx = std::sqrt(
+    (measurePhysR[1][0] - measurePhysR[0][0]) * (measurePhysR[1][0] - measurePhysR[0][0]) +
+    (measurePhysR[1][1] - measurePhysR[0][1]) * (measurePhysR[1][1] - measurePhysR[0][1]) +
+    (measurePhysR[1][2] - measurePhysR[0][2]) * (measurePhysR[1][2] - measurePhysR[0][2])
+  );
+
+
+  // Für die optionale Phasenmethode: physikalische Kreisfrequenz der Anregung bestimmen
+  T omegaPerStep = T(0);
+  if (boundarytype == local) {
+    // in setBoundaryValues(local) wurde sin(iT * 2π/40) verwendet
+    omegaPerStep =  2. * std::numbers::pi_v<T> /40.0;
+  } else {
+    // periodic-Zweig bei dir nutzt 2π * 2 / 40 (zwei Perioden in 40 Schritten)
+    omegaPerStep =  2. * std::numbers::pi_v<T>*2. /40.0;
   }
-  if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, 0, superGeometry, boundarytype, amplitude, rho0);}
+  const T omegaPhys = omegaPerStep / dtPhys;
+
+  CSV<T> csvWriter("Welle", ';', {"iT", "t", "p1", "p2"}, ".csv");
+  CSV<T> csvSummary("cp_vs_k", ';',
+    {"k_lat", "k2_lat", "cp_lat_xcorr", "cp_lat_phase", "cs_lat"},
+    ".csv");
+
+  // Messung Plot Amplitudenverlauf
+  // --- Druck-Functor einmal definieren ---
+  SuperLatticePhysPressure3D<T, DESCRIPTOR> pressureF(sLattice, converter);
+  AnalyticalFfromSuperF3D<T> pressureInterp(pressureF, true, true);
+
+  // --- Abtastlinie anlegen (x von links nach rechts, y=z=0) ---
+  const int NxLine = 200; // Auflösung für den Plot
+  std::vector<T> x_phys(NxLine), p_max(NxLine, T(0)), p_rss(NxLine, T(0));
+  std::vector<T> p_snap(NxLine, T(0)); // Snapshot-Werte
+  std::size_t n_accum = 0;
+
+  const T x0 = -physLength*2.4/2.;       // wie in deiner Geometrie
+  const T x1 =  physLength*2.4/2.;
+  const T y0 =  T(0), z0 = T(0);
+  for (int i=0; i<NxLine; ++i) {
+    x_phys[i] = x0 + (x1 - x0) * ( (i + T(0.5)) / T(NxLine) );
+  }
+
+  //=== Uebergabe der BoundaryConditions
+  if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, 0, superGeometry, boundarytype, amplitude, rho0,lambda_phys);}
   //--------------------------------------- FOR SCHLEIFE-------------------------------------------------------------------------------------------
   for (std::size_t iT=0; iT < iTmax; ++iT) {
     // === 5th Step: Definition of Initial and Boundary Conditions ===
-    if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0);}
+    if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0,lambda_phys);}
     
     // ------------------------- Messwerte nehmen
 
-    std::vector<T> measurements(1);
+    // ------------------------- Messwerte nehmen (2 Sensoren)
     pressureO.execute();
     watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
-    if (loadBalancer.isLocal(measureWatchpointR[0])) {
-      auto measureCell = watchpointsD.getBlock(loadBalancer.loc(measureWatchpointR[0]))
-                                    .get(measureWatchpointR[1]);
-      T measurePressure = measureCell.template getField<descriptors::SCALAR>();
-      measurements[0] += converter.getPhysPressure(measurePressure);
+
+    // lokale Messwerte sammeln
+    std::vector<T> localP(2, T(0)), globalP(2, T(0));
+    for (int k=0; k<2; ++k) {
+      if (loadBalancer.isLocal(measureLatticeR[k][0])) {
+        auto& blk = watchpointsD.getBlock(loadBalancer.loc(measureLatticeR[k][0]));
+        auto cell = blk.get(measureLatticeR[k][1]);
+        const T pu = cell.template getField<descriptors::SCALAR>(); // Lattice-Druck (PU)
+        localP[k] += converter.getPhysPressure(pu);                 // in phys. Druck [Pa]
+      }
     }
-    std::vector<T> globalMeasurements(1);
 
     #ifdef PARALLEL_MODE_MPI
-    singleton::mpi().reduceVect(measurements, globalMeasurements, MPI_SUM);
-    singleton::mpi().bCast(globalMeasurements.data(), globalMeasurements.size());
+    singleton::mpi().reduceVect(localP, globalP, MPI_SUM);
+    singleton::mpi().bCast(globalP.data(), globalP.size());
     #else
-    globalMeasurements = measurements;
+    globalP = localP;
     #endif
-    csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), T{globalMeasurements[0]}});
-    
-     
-    
+
+    // Zeitreihen füllen und CSV schreiben
+    p1.push_back(globalP[0]);
+    p2.push_back(globalP[1]);
+    csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), globalP[0], globalP[1]});
+
 
     // std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
     //           << "Gemessener Druck am Punkt ("
@@ -402,7 +478,20 @@ int main(int argc, char* argv[])
     if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
 
 
-
+    //===Zwischenschritt Amplitudenverlauf=====
+    // --- p(x,t) auf der Linie auslesen ---
+      for (int i=0; i<NxLine; ++i) {
+        T out;
+        T pos[3] = { x_phys[i], y0, z0 };
+        pressureInterp(&out, pos); // out in [Pa], weil *Phys*Pressure
+        const T a = std::abs(out);
+        if (a > p_max[i]) p_max[i] = a;      // Peak-Hüllkurve
+        p_rss[i] += out*out;                 // für RMS
+      }
+      // Optional: Snapshot zu einem gewünschten Zeitpunkt sichern
+      // Beispiel: Snapshot beim Maximum am ersten Sensor (wenn du t* kennst):
+      // if (iT == iT_snapshot) { p_snap = momentane Werte; }
+      ++n_accum;
 
 
     // === 6th Step: Collide and Stream Execution ===
@@ -410,7 +499,117 @@ int main(int argc, char* argv[])
     // === 7th Step: Computation and Output of the Results ===
     if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
     }
- 
+    // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
+
+    // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
+    auto drop_front = [&](std::vector<T>& v, std::size_t n){
+      if (v.size()>n) v.erase(v.begin(), v.begin()+n);
+    };
+    {
+      // 1 Periode ≈ (2π / omegaPhys) Sekunden
+      const T Tper = 2.*std::numbers::pi_v<T> / std::max(omegaPhys, T(1e-12));
+      const std::size_t Ndrop = (std::size_t)std::ceil(1.0 * Tper / dtPhys); // 1 Periode
+      drop_front(p1, Ndrop);
+      drop_front(p2, Ndrop);
+    }
+
+    // Cross-Correlation (einfach, normalisiert, Lag um 0 herum suchen)
+    auto xcorrLag = [&](const std::vector<T>& a, const std::vector<T>& b)->int {
+      const int N = (int)std::min(a.size(), b.size());
+      if (N<=3) return 0;
+      // maximaler Lag heuristisch begrenzen
+      const int maxLag = std::min( (int)std::round(0.5 * dx / std::max(dtPhys, T(1e-12))), N-1 );
+
+      // Mittelwerte entfernen
+      T ma=0, mb=0; 
+      for(int i=0;i<N;++i){ ma+=a[i]; mb+=b[i]; } 
+      ma/=N; mb/=N;
+
+      T bestC = -1e300; 
+      int bestLag = 0;
+      for (int lag=-maxLag; lag<=maxLag; ++lag) {
+        T num=0, da=0, db=0;
+        for (int i=0;i<N;++i) {
+          const int j = i+lag;
+          if (j<0 || j>=N) continue;
+          const T aa = a[i]-ma;
+          const T bb = b[j]-mb;
+          num += aa*bb; da += aa*aa; db += bb*bb;
+        }
+        if (da>0 && db>0) {
+          const T c = num / std::sqrt(da*db);
+          if (c>bestC) { bestC=c; bestLag=lag; }
+        }
+      }
+      return bestLag;
+    };
+
+    int lag = xcorrLag(p1,p2);
+    T dt = lag * dtPhys;
+    T cp_xcorr = dx / std::max(std::abs(dt), T(1e-12));
+
+    if (singleton::mpi().getRank()==0) {
+      std::cout << "[cp|XCORR] dx="<<dx<<" m, lag="<<lag<<" Samples, dt="<<dt
+                <<" s -> c_p="<<cp_xcorr<<" m/s\n";
+    }
+
+    // -------- Optional: Phasenmethode (benötigt korrekte omegaPhys) ----------------------------------------------------------------------------------------------------------------------------
+    auto complexProj = [&](const std::vector<T>& p)->std::pair<T,T>{
+      T A=0, B=0; // Re=A, Im=B (mit -sin für Im)
+      const std::size_t N = p.size();
+      for (std::size_t n=0;n<N;++n){
+        const T t = n*dtPhys;
+        A += p[n]*std::cos(omegaPhys*t);
+        B += p[n]*std::sin(omegaPhys*t);
+      }
+      const T phase = std::atan2(-B, A); // Phase ∈ (-π, π]
+      return {A, phase};
+    };
+
+    if (p1.size()>=8 && p2.size()>=8) {
+      auto [A1,phi1] = complexProj(p1);
+      auto [A2,phi2] = complexProj(p2);
+
+      T dphi = phi2 - phi1;
+      while (dphi >  M_PI) dphi -= 2*M_PI;
+      while (dphi < -M_PI) dphi += 2*M_PI;
+
+      const T cp_phase = std::abs(omegaPhys * dx / std::max(std::abs(dphi), T(1e-12)));
+
+      if (singleton::mpi().getRank()==0) {
+        std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys
+                  <<" rad/s -> c_p="<<cp_phase<<" m/s\n";
+      }
+
+        // Umrechnung nach lattice-Einheiten:
+            const T cp_lat_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+            const T cp_lat_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+            csvSummary.writeDataFile(0, {k_lat, k2_lat, cp_lat_xcorr, cp_lat_phase, cs_lat});
+
+    }
+    
+    //===Amplitudenverlauf eintragen=======
+    // RMS aus Summe der Quadrate
+    std::vector<T> p_rms(NxLine);
+    for (int i=0; i<NxLine; ++i) {
+      p_rms[i] = std::sqrt(p_rss[i] / std::max<std::size_t>(n_accum,1));
+    }
+
+    // --- CSVs schreiben ---
+    // 1) Peak-Hüllkurve
+    CSV<T> csvAmpPeak("amplitude_peak_vs_x", ';', {"x_phys_m", "p_peak_Pa"}, ".csv");
+    for (int i=0; i<NxLine; ++i) csvAmpPeak.writeDataFile(i, {x_phys[i], p_max[i]});
+
+    // 2) RMS-Hüllkurve
+    CSV<T> csvAmpRms("amplitude_rms_vs_x", ';', {"x_phys_m", "p_rms_Pa"}, ".csv");
+    for (int i=0; i<NxLine; ++i) csvAmpRms.writeDataFile(i, {x_phys[i], p_rms[i]});
+
+    // 3) (optional) Snapshot
+    CSV<T> csvSnap("amplitude_snapshot_vs_x", ';', {"x_phys_m", "p_snapshot_Pa"}, ".csv");
+    for (int i=0; i<NxLine; ++i) csvSnap.writeDataFile(i, {x_phys[i], p_snap[i]});
+
+
+
    timer.stop();
    timer.printSummary();
  }
