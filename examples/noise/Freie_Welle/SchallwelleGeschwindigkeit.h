@@ -50,9 +50,24 @@ namespace olb {
              * p(x)=A*sin(kx+großes Phi)
              * u(x)=1/(rho_0*c_s)*p(x)
             */
-            T distance = input[0];
-            output[0] = 1./(rho0*cs)*util::pressureFromDensity<T,DESCRIPTOR>(rho0 + amplitude*sin(Wellenzahl*distance-kreisfrequenz*time+phase));
-            for ( size_t i=1; i<ndim; i++ ) output[i] = 0.;
+            // T distance = input[0];
+            // output[0] = 1./(rho0*cs)*util::pressureFromDensity<T,DESCRIPTOR>(rho0 + amplitude*sin(Wellenzahl*distance-kreisfrequenz*time+phase));
+            // for ( size_t i=1; i<ndim; i++ ) output[i] = 0.;
+            // return true;
+
+
+            const T x = input[0];                // [m], physisch
+            const T t = time;                 // [s], physisch (per converter gegeben!)
+            const T phi = Wellenzahl * x - kreisfrequenz * t + phase;
+        
+            const T p_phys = amplitude * std::sin(phi);          // [Pa]
+            const T p_lu   = converter.getLatticePressure(p_phys);
+        
+            output[0] = 1./(rho0*cs)*p_lu;             // LU-Dichte zurückgeben
+            for (unsigned d = 1; d < ndim; ++d) {
+                output[d] = T(0);
+              }
+
             return true;
           };
         };

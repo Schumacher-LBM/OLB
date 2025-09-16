@@ -39,10 +39,10 @@ const T physLength        = 1.;         // length of the cuboid [m]
 const T physspan          = 0.46;
 const T physwidth         = 0.46;
 const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
-const T physViscosity     = 1.5e-5;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
+const T physViscosity     = 1.e-3;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
 const T physDensity       = 1.;         // fluid density of air (20°C)[kg/(m*m*m)]
 const T physMaxT          = 0.5;        // maximal simulation time [s]
-const T physDeltaT        = 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
+const T physDeltaT        =0.0000172;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
 typedef enum { periodic, local } BoundaryType;
  
 
@@ -163,16 +163,17 @@ struct PressureO {
    if (boundarytype == periodic && iT==0) {
      auto domain = superGeometry.getMaterialIndicator({1});
     
+     
      T wellenzahl=2. * std::numbers::pi_v<T>/lambda_phys ;//k=2pi/lamda
-     T kreisfrequenz= 2. * std::numbers::pi_v<T> * 2.0 / 40.0; // Theoretisch muesste die Kreisfrequenz bei 4 pi liegen (w=cs*k).  :40 wird gerechnet, weil 40 Iterationen getätigt werden sollen um auf 2 Perioden zu kommen
+     T kreisfrequenz=343.46*wellenzahl;
      T phase =0.;
      //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
-     T time= iT;
+     T time= converter.getLatticeTime(iT);
      T cs=sqrt(T(1)/descriptors::invCs2<T,DESCRIPTOR>());
 
      olb::SchallwelleRho<3, T, DESCRIPTOR> schallquelle(rho0, amplitude, wellenzahl, kreisfrequenz, phase, time, converter);
      olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,rho0,cs,converter);
-     // AnalyticalConst3D<T,T> rhoF(schallquelle);
+     // AnalyticalConst3D<T,T> rhoF( schallquelle);
      AnalyticalConst3D<T,T> uInf(0., 0., 0.);
  
  
@@ -294,16 +295,16 @@ int main(int argc, char* argv[])
 
   // === 2nd Step: Prepare Geometry ===
   BoundaryType boundarytype = periodic;
-  Vector<T,ndim> originFluid(-physLength*2.4/2., -physwidth/2., -physspan/2.);
-  Vector<T,ndim> extendFluid(physLength*2.4, physwidth, physspan);
+  Vector<T,ndim> originFluid(-2.4/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
+  Vector<T,ndim> extendFluid(2.4/physLength, physwidth/physLength, physspan/physLength);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
   // -----------Variabeln definiere Messungen
   size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
   size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
     
   //----------------------------- Geometrie aufspannen
-  Vector<T,ndim> extend{physLength*2.4, physwidth, physspan};
-  Vector<T,ndim> origin{-physLength*2.4/2., -physwidth/2., -physspan/2.};
+  Vector<T,ndim> extend{2.47/physLength, physwidth/physLength, physspan/physLength};
+  Vector<T,ndim> origin{-2.4/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.};
   IndicatorCuboid3D<T> cuboid(extend, origin);
   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
   cuboidDecomposition.setPeriodicity({true,true,true});
@@ -499,6 +500,82 @@ int main(int argc, char* argv[])
     // === 7th Step: Computation and Output of the Results ===
     if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
     }
+
+    // ------------------------- c_p aus ERSTEM WELLENBERG -------------------------
+
+    // Hilfsfunktion: erster Peak (mit Guard & Parabel-Refinement)
+    auto firstPeakTime = [&](const std::vector<T>& p, T dt, int guardSamples, T minAmp){
+      const int N = (int)p.size();
+      const int iStart = std::min(std::max(guardSamples, 1), N-3);
+
+      for (int i = iStart+1; i < N-1; ++i) {
+        if (p[i] > minAmp && p[i] > p[i-1] && p[i] > p[i+1]) {
+          // Parabolische Subsample-Interpolation
+          const T a = p[i-1] - 2*p[i] + p[i+1];
+          const T b = p[i-1] - p[i+1];
+          T delta = T(0);
+          if (std::abs(a) > T(1e-30)) {
+            delta = b / (2*a);   // ideal in [-0.5, 0.5]
+            if (delta < T(-0.5)) delta = T(-0.5);
+            if (delta > T( 0.5)) delta = T( 0.5);
+          }
+          return (i + delta) * dt; // physische Zeit [s]
+        }
+      }
+      return std::numeric_limits<T>::quiet_NaN();
+    };
+
+    // Parameter für die Peak-Suche
+    const int guard = 5; // ein paar erste Samples ignorieren (Starttransient)
+    T estAmp = T(0);
+    for (int i = guard; i < (int)std::min<std::size_t>(p1.size(), guard+50); ++i) {
+      estAmp = std::max(estAmp, std::abs(p1[i]));
+    }
+    const T minAmp = estAmp * T(0.2); // 20% der frühen Spitze als Schwelle
+
+    // Peakzeiten bestimmen
+    const T t1 = firstPeakTime(p1, dtPhys, guard, minAmp);
+    const T t2 = firstPeakTime(p2, dtPhys, guard, minAmp);
+
+    // c_p berechnen (nur wenn valide)
+    if (std::isfinite(t1) && std::isfinite(t2) && t2 != t1) {
+      const T cp_firstPeak_phys = dx / std::abs(t2 - t1); // [m/s]
+
+      // nach Lattice normieren (optional, für Vergleich/CSV)
+      const T cp_firstPeak_lat = cp_firstPeak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+      const T cs_lat_here = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+      const T ratio = cp_firstPeak_lat / cs_lat_here;
+
+      if (singleton::mpi().getRank()==0) {
+        std::cout << "[cp|FIRST-PEAK] t1="<<t1<<" s, t2="<<t2<<" s"
+                  << " -> c_p="<<cp_firstPeak_phys<<" m/s"
+                  << " | c_p_lat="<<cp_firstPeak_lat
+                  << " | c_p/c_s="<<ratio << "\n";
+      }
+
+      // in bestehende CSV aufnehmen (zusätzliche Spalten sinnvoll)
+      // (a) neue CSV nur für First-Peak:
+      CSV<T> csvFirst("cp_first_peak", ';',
+        {"k_lat", "k2_lat", "cp_lat_first", "cs_lat", "cp_over_cs"},
+        ".csv");
+      csvFirst.writeDataFile(0, {k_lat, k2_lat, cp_firstPeak_lat, cs_lat_here, ratio});
+
+      // (b) oder bestehende zusammenfassende CSV erweitern:
+      // CSV<T> csvSummary2("cp_vs_k", ';',
+      //   {"k_lat","k2_lat","cp_lat_xcorr","cp_lat_phase","cp_lat_first","cs_lat"}, ".csv");
+      // csvSummary2.writeDataFile(0, {k_lat,k2_lat,cp_lat_xcorr,cp_lat_phase,cp_firstPeak_lat,cs_lat_here});
+    } else {
+      if (singleton::mpi().getRank()==0) {
+        std::cout << "[cp|FIRST-PEAK] Konnte ersten Peak nicht robust bestimmen.\n";
+      }
+    }
+
+
+
+
+
+
+
     // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
 
     // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
