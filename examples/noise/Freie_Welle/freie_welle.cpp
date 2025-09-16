@@ -2,7 +2,7 @@
 /*Notiz: FREIE WELLE
 Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. 
 Bei dem ausführen des Programms muss mit --iTmax XXX eine Zahl angegeben werden, wieviele Iterationsdurchläufe das Programm durchläuft
-Terminalbefehl: make clean; make; ./Freie_Welle --iTmax 150 --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden
+Terminalbefehl: make clean; make; ./Freie_Welle --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
 To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen finden. Außerdem die Größe des Mediums angeben. Messwerte nehmen
 /*  Lattice Boltzmann sample, written in C++, using the OpenLB
  *  library
@@ -262,6 +262,9 @@ int main(int argc, char* argv[])
   if (outdir == "") outdir = "./tmp/";
   else outdir = "./" + outdir + "/";
   singleton::directories().setOutputDir(outdir);
+  // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
+  int peakN = args.getValueOrFallback("--peakN", 1);
+
   
   OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
 
@@ -278,7 +281,7 @@ int main(int argc, char* argv[])
   // --- Wellenzahl in physikalischen und lattice Einheiten ---
   // Nutze dieselbe λ bzw. wellenzahl wie in setBoundaryValues (hier: λ_phys = 0.5 m)
   
-  const T lambda_phys = T(0.5);                 
+  const T lambda_phys = T(0.50);                 
   const T k_phys = 2.*std::numbers::pi_v<T> / lambda_phys;         // [rad/m]
   const T k_lat  = k_phys * converter.getPhysDeltaX(); // [rad per lattice cell]
   const T k2_lat = k_lat * k_lat;
@@ -350,7 +353,7 @@ int main(int argc, char* argv[])
   // --- Messpunkte in physikalischen Koordinaten (m)
   // --- Zwei Messpunkte in physikalischen Koordinaten (m)
   std::array<Vector<T,ndim>,2> measurePhysR = {
-    Vector<T,ndim>{0.566, 0.0, 0.230},
+    Vector<T,ndim>{0.546, 0.0, 0.230},
     Vector<T,ndim>{0.586, 0.0, 0.230}
   };
   std::array<Vector<int,4>,2> measureLatticeR{};
@@ -501,74 +504,78 @@ int main(int argc, char* argv[])
     if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
     }
 
-    // ------------------------- c_p aus ERSTEM WELLENBERG -------------------------
+    #include <limits>
+#include <algorithm>
 
-    // Hilfsfunktion: erster Peak (mit Guard & Parabel-Refinement)
-    auto firstPeakTime = [&](const std::vector<T>& p, T dt, int guardSamples, T minAmp){
-      const int N = (int)p.size();
-      const int iStart = std::min(std::max(guardSamples, 1), N-3);
+// --- Hilfsfunktion: alle Peak-Zeiten (lokale Maxima) finden, mit Parabel-Refinement
+auto findPeakTimes = [&](const std::vector<T>& p, T dt, int guardSamples, T minAmp){
+  std::vector<T> peaks;
+  const int N = (int)p.size();
+  const int iStart = std::min(std::max(guardSamples, 1), N-3);
 
-      for (int i = iStart+1; i < N-1; ++i) {
-        if (p[i] > minAmp && p[i] > p[i-1] && p[i] > p[i+1]) {
-          // Parabolische Subsample-Interpolation
-          const T a = p[i-1] - 2*p[i] + p[i+1];
-          const T b = p[i-1] - p[i+1];
-          T delta = T(0);
-          if (std::abs(a) > T(1e-30)) {
-            delta = b / (2*a);   // ideal in [-0.5, 0.5]
-            if (delta < T(-0.5)) delta = T(-0.5);
-            if (delta > T( 0.5)) delta = T( 0.5);
-          }
-          return (i + delta) * dt; // physische Zeit [s]
-        }
+  for (int i = iStart+1; i < N-1; ++i) {
+    if (p[i] > minAmp && p[i] > p[i-1] && p[i] > p[i+1]) {
+      // Parabolische Subsample-Interpolation um i
+      const T a = p[i-1] - 2*p[i] + p[i+1];
+      const T b = p[i-1] - p[i+1];
+      T delta = T(0);
+      if (std::abs(a) > T(1e-30)) {
+        delta = b / (2*a);                 // ideal in [-0.5, 0.5]
+        delta = std::clamp(delta, T(-0.5), T(0.5));
       }
-      return std::numeric_limits<T>::quiet_NaN();
-    };
-
-    // Parameter für die Peak-Suche
-    const int guard = 5; // ein paar erste Samples ignorieren (Starttransient)
-    T estAmp = T(0);
-    for (int i = guard; i < (int)std::min<std::size_t>(p1.size(), guard+50); ++i) {
-      estAmp = std::max(estAmp, std::abs(p1[i]));
+      peaks.push_back( (i + delta) * dt ); // physische Zeit [s]
     }
-    const T minAmp = estAmp * T(0.2); // 20% der frühen Spitze als Schwelle
+  }
+  return peaks;
+};
 
-    // Peakzeiten bestimmen
-    const T t1 = firstPeakTime(p1, dtPhys, guard, minAmp);
-    const T t2 = firstPeakTime(p2, dtPhys, guard, minAmp);
+// --- Parameter für die Peak-Suche
+const int guard = 5; // ein paar erste Samples ignorieren
+T estAmp = T(0);
+for (int i = guard; i < (int)std::min<std::size_t>(p1.size(), guard+50); ++i) {
+  estAmp = std::max(estAmp, std::abs(p1[i]));
+}
+const T minAmp = estAmp * T(0.2); // 20% der frühen Spitze als Schwellwert
 
-    // c_p berechnen (nur wenn valide)
-    if (std::isfinite(t1) && std::isfinite(t2) && t2 != t1) {
-      const T cp_firstPeak_phys = dx / std::abs(t2 - t1); // [m/s]
+// --- Alle frühen Peaks beider Sensoren
+auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
+auto peaks2 = findPeakTimes(p2, dtPhys, guard, minAmp);
 
-      // nach Lattice normieren (optional, für Vergleich/CSV)
-      const T cp_firstPeak_lat = cp_firstPeak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-      const T cs_lat_here = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
-      const T ratio = cp_firstPeak_lat / cs_lat_here;
+// --- gewünschten Peak wählen (1=erster, 2=zweiter, ...)
+//     (CLI: --peakN 2 für zweiten Wellenberg)
+const int n = std::max(1, peakN);
+if ((int)peaks1.size() >= n && (int)peaks2.size() >= n) {
+  const T t1 = peaks1[n-1];
+  const T t2 = peaks2[n-1];
 
-      if (singleton::mpi().getRank()==0) {
-        std::cout << "[cp|FIRST-PEAK] t1="<<t1<<" s, t2="<<t2<<" s"
-                  << " -> c_p="<<cp_firstPeak_phys<<" m/s"
-                  << " | c_p_lat="<<cp_firstPeak_lat
-                  << " | c_p/c_s="<<ratio << "\n";
-      }
+  if (t2 != t1 && std::isfinite(t1) && std::isfinite(t2)) {
+    const T cp_peak_phys = dx / std::abs(t2 - t1); // [m/s]
+    const T cp_peak_lat  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    const T cs_lat_here  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+    const T ratio        = cp_peak_lat / cs_lat_here;
 
-      // in bestehende CSV aufnehmen (zusätzliche Spalten sinnvoll)
-      // (a) neue CSV nur für First-Peak:
-      CSV<T> csvFirst("cp_first_peak", ';',
-        {"k_lat", "k2_lat", "cp_lat_first", "cs_lat", "cp_over_cs"},
-        ".csv");
-      csvFirst.writeDataFile(0, {k_lat, k2_lat, cp_firstPeak_lat, cs_lat_here, ratio});
-
-      // (b) oder bestehende zusammenfassende CSV erweitern:
-      // CSV<T> csvSummary2("cp_vs_k", ';',
-      //   {"k_lat","k2_lat","cp_lat_xcorr","cp_lat_phase","cp_lat_first","cs_lat"}, ".csv");
-      // csvSummary2.writeDataFile(0, {k_lat,k2_lat,cp_lat_xcorr,cp_lat_phase,cp_firstPeak_lat,cs_lat_here});
-    } else {
-      if (singleton::mpi().getRank()==0) {
-        std::cout << "[cp|FIRST-PEAK] Konnte ersten Peak nicht robust bestimmen.\n";
-      }
+    if (singleton::mpi().getRank()==0) {
+      std::cout << "[cp|PEAK#" << n << "] t1="<<t1<<" s, t2="<<t2<<" s"
+                << " -> c_p="<<cp_peak_phys<<" m/s"
+                << " | c_p_lat="<<cp_peak_lat
+                << " | c_p/c_s="<<ratio << "\n";
     }
+
+    // CSV schreiben (eigene Datei oder an deine bestehende anhängen)
+    
+    CSV<T> csvPeak("cp_peak_n", ';',
+      {"k_lat","k2_lat","peakN","cp_phys","cp_lat","cs_lat","cp_over_cs"}, ".csv");
+    csvPeak.writeDataFile(0,{k_lat, k2_lat, peakN, cp_peak_phys, cp_peak_lat, cs_lat_here, ratio});
+    
+  } else {
+    if (singleton::mpi().getRank()==0) std::cout << "[cp|PEAK#" << n << "] ungültige Peak-Zeiten.\n";
+  }
+} else {
+  if (singleton::mpi().getRank()==0) {
+    std::cout << "[cp|PEAK#" << n << "] Nicht genug Peaks gefunden: "
+              << "sensor1="<<peaks1.size()<<", sensor2="<<peaks2.size()<<"\n";
+  }
+}
 
 
 
