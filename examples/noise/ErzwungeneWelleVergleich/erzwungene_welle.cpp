@@ -33,16 +33,21 @@ using BulkDynamics   = BGKdynamics<T, DESCRIPTOR>;
 using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
 
 const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
-
-const T physDeltaX        = 0.02;   // grid spacing [m]
-const T physLength        = 1.;         // length of the cuboid [m]
+const T lambda_phys = T(0.6);         // Lambda verändern!
+const T physDeltaX        = 0.02;     // grid spacing [m]
+const T physLength        = 1.;       // length of the cuboid [m]
 const T physspan          = 0.46;
 const T physwidth         = 0.46;
-const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
-const T physViscosity     = 1.5e-3;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
-const T physDensity       = 1.;         // fluid density of air (20°C)[kg/(m*m*m)]
-const T physMaxT          = 0.5;        // maximal simulation time [s]
-const T physDeltaT        =((0.55-0.5)/3)/physViscosity*physDeltaX*physDeltaX;//0.0000172;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
+const T physLidVelocity   = 1.0;      // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
+const T physViscosity     = 1.5e-3;   // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
+const T physDensity       = 1.;       // fluid density of air (20°C)[kg/(m*m*m)]
+const T physMaxT          = 0.5;      // maximal simulation time [s]
+const T charL   = 1;      // z.B. deine Wellenlänge
+const int res   = 120;               // ~30–40 Zellen pro λ
+const T Ma      = 0.01;             // kleine Machzahl
+const T charV   = 0.003;              // charakteristische phys. Geschwindigkeit (z.B. U' = p'/(rho*c))
+const T rho0    = 1.0;
+const T nu_phys = 1.5e-5;
 typedef enum { periodic, local } BoundaryType;
  
 
@@ -95,7 +100,7 @@ struct PressureO {
     
     {
       // Dicke der Hülle in Zellen:
-      const int spongeCells = 2;                       // z.B. 8 Zellen
+      const int spongeCells = 12;                       // z.B. 8 Zellen
       const T   dx          = converter.getPhysDeltaX();
       const T   sx          = spongeCells*dx;
       const T   sy          = spongeCells*dx;
@@ -116,7 +121,7 @@ struct PressureO {
       superGeometry.rename(4, 1, inner);
     }
     superGeometry.rename(2, 1);
-    Vector<T,3> center(-0.586, 0., 0.); // Zentrum der Welle
+    Vector<T,3> center(-0.0, 0., 0.); // Zentrum der Welle
     T radius = dx;
     IndicatorSphere3D<T> pointSource(center, radius);
     superGeometry.rename(1,3,pointSource);
@@ -200,7 +205,7 @@ struct PressureO {
       //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
       T time= converter.getPhysTime(iT);
       T cs=sqrt(T(1)/descriptors::invCs2<T,DESCRIPTOR>());
-      T envelope = std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
+      //T envelope = std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
       int dumb = 2;
       olb::SchallwelleRho<3, T, DESCRIPTOR> schallquelle(rho0, amplitude, wellenzahl, kreisfrequenz, phase, time, dumb,converter);
       olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,rho0,cs,converter);
@@ -302,8 +307,8 @@ struct PressureO {
      T                          dist        = converter.getPhysDeltaX();
      T                          ndatapoints = converter.getResolution(); // number of data points on line
      AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
-     T                          pmin(converter.getPhysPressure(-amplitude / 50));
-     T                          pmax(converter.getPhysPressure(+amplitude / 50));
+     T                          pmin(converter.getPhysPressure(-amplitude / 20));
+     T                          pmax(converter.getPhysPressure(+amplitude / 20));
      linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
                        horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
      //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
@@ -332,19 +337,21 @@ int main(int argc, char* argv[])
   OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
 
   // Provide the unit converter the characteristic entities
-  const UnitConverter<T,DESCRIPTOR> converter (
-    physDeltaX,        // physDeltaX: spacing between two lattice cells in [m]
-    physDeltaT,        // physDeltaT: time step in [s]
-    physLength,        // charPhysLength: reference length of simulation geometry in [m]
-    physLidVelocity,   // charPhysVelocity: highest expected velocity during simulation in [m/s]
-    physViscosity,     // physViscosity: physical kinematic viscosity in [m^2/s]
-    physDensity        // physDensity: physical density [kg/m^3]
-  );
-  converter.print();
+  UnitConverterFromResolutionAndLatticeVelocity<T, DESCRIPTOR> converter(
+    (size_t)res,             // resolution = Nx auf charL
+    Ma/std::sqrt(3.),        // charLatticeVelocity
+    charL,                   // charPhysLength
+    charV,                   // charPhysVelocity
+    nu_phys,                 // physViscosity
+    rho0                     // physDensity
+    );
+    converter.print();
+
+
   // --- Wellenzahl in physikalischen und lattice Einheiten ---
   // Nutze dieselbe λ bzw. wellenzahl wie in setBoundaryValues (hier: λ_phys = 0.5 m)
   
-  const T lambda_phys = T(0.6);                 
+            
   const T k_phys = 2.*std::numbers::pi_v<T> / lambda_phys;         // [rad/m]
   const T k_lat  = k_phys * converter.getPhysDeltaX(); // [rad per lattice cell]
   const T k2_lat = k_lat * k_lat;
