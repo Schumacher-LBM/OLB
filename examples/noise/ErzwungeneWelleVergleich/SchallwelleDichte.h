@@ -46,29 +46,30 @@ public:
     // }
 
     bool operator()(T output[], const T input[]) override {
-        const T phi   = waveNumber*input[0] - omega*time + phase;
+        const T x = input[0];                // [m], physisch
+        const T t = time;                 // [s], physisch (per converter gegeben!)
+        const T phi = waveNumber * x - omega * t + phase;
+      
+        // z.B. 1 Periodendauer rampen
+        const T Tramp = (2*std::numbers::pi_v<T>)/omega;  // Rampdauer in s
+        const T envelope = std::sin(std::min(T(1), t/Tramp) * std::numbers::pi_v<T>/T(2));
 
-        // gleiche Hann-Rampe wie in Gesch-Functor
-        const T Tramp = (T(2)*std::numbers::pi_v<T>)/omega;
-        const T s     = std::clamp(time/Tramp, T(0), T(1));
-        const T env   = T(0.5)*(T(1)-std::cos(std::numbers::pi_v<T>*s));
-
-        // optionale räumliche Glättung (kleine Gaußblase)
-        const T sigma = T(2) * converter.getPhysDeltaX();
-        T r2 = T(0);
-        // wenn du x0 nicht im Rho-Functor gespeichert hast, füge es analog wie im Gesch-Functor hinzu
-        for (unsigned d=0; d<ndim; ++d) {
-            const T dd = (input[d] /*- x0[d]*/); // ggf. x0 ergänzen
-            r2 += dd*dd;
+        T p_phys=0.;
+        
+        if (btype==2) //local
+        {
+            p_phys = envelope*amplitude * std::sin(phi);  // [Pa]
         }
-        const T w = std::exp(-r2/(sigma*sigma));
-
-        T p_phys = w * env * amplitude * std::sin(phi);      // [Pa]
-        if (btype == 2) { /* local */ }                      // (Logik behältst du)
-        // LU-Druck und rho
-        const T p_lu  = converter.getLatticePressure(p_phys);
-        const T rho_lu = p_lu / (T(1)/T(3));                 // c_s^2=1/3
-        output[0] = roh0 + rho_lu;
+        else{ p_phys = amplitude * std::sin(phi);          // [Pa] periodic
+            }
+        if (p_phys==0.)
+        {std::cout << "p_phys ist 0 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";}
+        
+        const T p_lu   = converter.getLatticePressure(p_phys);
+        // output[0]= p_lu;
+        const T rho_lu = p_lu / (T(1)/T(3));                  // c_s^2 = 1/3
+    
+        output[0] = roh0 + rho_lu;                            // LU-Dichte zurückgeben
         return true;
     }
     
