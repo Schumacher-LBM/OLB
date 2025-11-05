@@ -43,7 +43,7 @@ const T physViscosity     = 1.5e-3;   // kinetic viscosity of fluid [m*m/s] Fuer
 const T physDensity       = 1.;       // fluid density of air (20°C)[kg/(m*m*m)]
 const T physMaxT          = 0.5;      // maximal simulation time [s]
 const T charL   = 1;      // z.B. deine Wellenlänge
-const int res   = 120;               // ~30–40 Zellen pro λ
+const int res   = 90;               // ~30–40 Zellen pro λ
 const T Ma      = 0.01;             // kleine Machzahl
 const T charV   = 0.003;              // charakteristische phys. Geschwindigkeit (z.B. U' = p'/(rho*c))
 const T rho0    = 1.0;
@@ -122,7 +122,7 @@ struct PressureO {
     }
     superGeometry.rename(2, 1);
     Vector<T,3> center(-0.0, 0., 0.); // Zentrum der Welle
-    T radius = dx;
+    T radius = 2.*dx;
     IndicatorSphere3D<T> pointSource(center, radius);
     superGeometry.rename(1,3,pointSource);
     break;
@@ -164,7 +164,7 @@ struct PressureO {
       sLattice.defineDynamics<SpongeDynamics>(sponge);
 
       // Relaxation wie gehabt
-      const T omega = converter.getLatticeRelaxationFrequency();
+      
       sLattice.setParameter<descriptors::OMEGA>(omega);
 
       // (Optional) Sponge-Stärke gleichmäßig setzen (klein anfangen!)
@@ -199,31 +199,56 @@ struct PressureO {
  
     if (boundarytype == local) {
       auto domain = superGeometry.getMaterialIndicator({3});
+
+
+
+
+      const T cs_lat = std::sqrt(T(1)/descriptors::invCs2<T,DESCRIPTOR>());
+      const T c_phys = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * cs_lat;
+      
+
       T wellenzahl=2. * std::numbers::pi_v<T>/lambda_phys ;//k=2pi/lamda
-      T kreisfrequenz=343.46*wellenzahl;
+      const T kreisfrequenz = c_phys * wellenzahl;
       T phase =0.;
       //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
+
+
+
+
+
+
       T time= converter.getPhysTime(iT);
       T cs=sqrt(T(1)/descriptors::invCs2<T,DESCRIPTOR>());
       //T envelope = std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
       int dumb = 2;
+
+
+
+
       olb::SchallwelleRho<3, T, DESCRIPTOR> schallquelle(rho0, amplitude, wellenzahl, kreisfrequenz, phase, time, dumb,converter);
       olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,rho0,cs,converter);
       //olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,rho0,cs,boundarytype, converter);
-      // AnalyticalConst3D<T,T> rhoF( schallquelle);
+     // // AnalyticalConst3D<T,T> rhoF( schallquelle);
       //AnalyticalConst3D<T,T> schallquelle_geschwindigkeit(0, 0,0);  
  
 
 
       // sLattice.defineRhoU(domain, schallquelle, uInf);
       // sLattice.iniEquilibrium(domain, schallquelle, uInf);
-      if(iT==0)
-       {
-         AnalyticalConst3D<T,T> schallquelle(1.);       // Definiert rho auf 1
-         AnalyticalConst3D<T,T> schallquelle_geschwindigkeit(0., 0.,0.);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-       }
+      if (iT==0) {
+        // einmalig initialisieren
+        auto fluid = superGeometry.getMaterialIndicator({1,3,4}); // oder {1,3}
+        AnalyticalConst3D<T,T> u0(0,0,0);
+        AnalyticalConst3D<T,T> rho1230(1.);
+        sLattice.defineRhoU(fluid, rho1230, u0);
+        sLattice.iniEquilibrium(fluid, rho1230, u0);
+      }
+      
+      // danach in jedem Schritt KEIN iniEquilibrium mehr!
       sLattice.defineRhoU(domain, schallquelle, schallquelle_geschwindigkeit);
-      sLattice.iniEquilibrium(domain, schallquelle, schallquelle_geschwindigkeit);
+      
+      // sLattice.defineRhoU(domain, schallquelle, schallquelle_geschwindigkeit);
+      // sLattice.iniEquilibrium(domain, schallquelle, schallquelle_geschwindigkeit);
     }
      
  
