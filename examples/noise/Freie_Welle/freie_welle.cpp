@@ -33,17 +33,21 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
  
  const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
- 
- const T physDeltaX        = 0.02;   // grid spacing [m]
- const T physLength        = 1.;         // length of the cuboid [m]
- const T physspan          = 0.46;
+ T lambda_phys             = T(0.6);  // gewünschte Wellenlänge in LU
+const int lambda_lat        = 10;     //Die Wellenlänge soll auf 10 LU abgebildet werden
+const T physDeltaX = lambda_phys / lambda_lat;  
+const int nWaves  = 6.;               // In der Domäne sollen 6 Wellen abgebildet werden
+const int Nx               = nWaves*lambda_lat; 
+const T physLength         = 1.;       // length of the cuboid [m]
+const T domainlenth        =Nx*physDeltaX; 
+const T physspan          = 0.46;
  const T physwidth         = 0.46;
  const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
  const T physViscosity     = 1.5e-5;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
  const T physDensity       = 1.;         // fluid density of air (20°C)[kg/(m*m*m)]
  const T physMaxT          = 0.5;        // maximal simulation time [s]
  const T physDeltaT        = 3.37e-5;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
- typedef enum { periodic, local } BoundaryType;
+
   
  
  
@@ -77,8 +81,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
 
  void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter,
   SuperGeometry<T, ndim>& superGeometry,
-  IndicatorF3D<T>& /*domainFluid*/,
-  BoundaryType /*boundarytype*/)
+  IndicatorF3D<T>& /*domainFluid*/)
 {
 OstreamManager clout(std::cout, "prepareGeometry");
 clout << "\nPrepare Geometry ..." << std::endl;
@@ -99,20 +102,6 @@ IndicatorSphere3D<T> src(center, rSrc);
 superGeometry.rename(1, 3, src);                 // Material 3 = Quelle
 }
 
-// ---------- Sponge (Material 4) an allen sechs Wänden ----------
-const T spongeDepth = 30 * dx; // ~30 Zellen – bei Bedarf anheben
-// x-
-superGeometry.rename(1,4, IndicatorCuboid3D<T>({spongeDepth, Ly, Lz}, {-Lx/2., -Ly/2., -Lz/2.}));
-// x+
-superGeometry.rename(1,4, IndicatorCuboid3D<T>({spongeDepth, Ly, Lz}, { Lx/2.-spongeDepth, -Ly/2., -Lz/2.}));
-// y-
-superGeometry.rename(1,4, IndicatorCuboid3D<T>({Lx, spongeDepth, Lz}, {-Lx/2., -Ly/2., -Lz/2.}));
-// y+
-superGeometry.rename(1,4, IndicatorCuboid3D<T>({Lx, spongeDepth, Lz}, {-Lx/2.,  Ly/2.-spongeDepth, -Lz/2.}));
-// z-
-superGeometry.rename(1,4, IndicatorCuboid3D<T>({Lx, Ly, spongeDepth}, {-Lx/2., -Ly/2., -Lz/2.}));
-// z+
-superGeometry.rename(1,4, IndicatorCuboid3D<T>({Lx, Ly, spongeDepth}, {-Lx/2., -Ly/2.,  Lz/2.-spongeDepth}));
 
 superGeometry.getStatistics().print();
 }
@@ -156,7 +145,7 @@ superGeometry.getStatistics().print();
     void prepareLattice(UnitConverter<T, DESCRIPTOR> const& converter,
       SuperLattice<T, DESCRIPTOR>& sLattice,
       SuperGeometry<T, ndim>& superGeometry, T rho0, T u0,
-      T amplitude, T alpha, BoundaryType /*boundarytype*/,
+      T amplitude, T alpha, 
       T /*dampingDepthPU*/, T /*lengthDomain*/, T /*dampingStrength*/)
           {
           OstreamManager clout(std::cout, "prepareLattice");
@@ -221,43 +210,14 @@ superGeometry.getStatistics().print();
   
   void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
     SuperLattice<T, DESCRIPTOR>& sLattice,
-    std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude, T rho0, T lambda_phys)
+    std::size_t iT, SuperGeometry<T,ndim>& superGeometry, T amplitude, T rho0, T lambda_phys)
   {
   
    
-    if (boundarytype == local) {
-      // Material 3: Punktquelle im Zentrum
-      auto src = superGeometry.getMaterialIndicator({3});
-    
-      // ω aus main(): entweder aus λ oder --fHz (siehe oben)
-      // Wenn du 'omega_forced' nicht global hast, berechne hier:
-      const T csL = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
-      const T csP = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * csL;
-      const T k   = 2.*std::numbers::pi_v<T> / lambda_phys;    // falls λ gesetzt
-      const T omega = (/*fHz>0?*/ false) ? T(0) : csP * k;      // <- falls du fHz nutzt, setze hier direkt ω = 2π f
-    
-      const T tPhys = converter.getPhysTime(iT);
-    
-      // sanftes Einschalten (Hann-Fenster über Nwin Schritte)
-      const int Nwin = 80; // ~2 Perioden (bei Bedarf anpassen)
-      const T  Tper  = (omega>0) ? (2.*std::numbers::pi_v<T> / omega) : T(0);
-      const T  s     = (Tper>0) ? std::clamp( tPhys / (2.0*Tper), T(0), T(1) ) : T(1);
-      const T  window= (s<1) ? T(0.5)*(1 - std::cos(std::numbers::pi_v<T>*s)) : T(1);
-    
-      AnalyticalConst3D<T,T> rhoF( physDensity + window * amplitude * std::sin(omega * tPhys) );
-      AnalyticalConst3D<T,T> uInf( 0., 0., 0. );
-    
-      // nur in den Source-Zellen setzen
-      sLattice.defineRhoU(src, rhoF, uInf);
-      sLattice.iniEquilibrium(src, rhoF, uInf);
-    }
-    
   
   
-    if (boundarytype == periodic && iT==0) {
+    if (iT==0) {
       auto domain = superGeometry.getMaterialIndicator({1});
-     
-      
       T wellenzahl=2. * std::numbers::pi_v<T>/lambda_phys ;//k=2pi/lamda
       T kreisfrequenz=343.46*wellenzahl;
       T phase =0.;
@@ -389,24 +349,24 @@ superGeometry.getStatistics().print();
    const T cs_phys = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * cs_lat;  // nur Info
  
    // === 2nd Step: Prepare Geometry ===
-   BoundaryType boundarytype = local;
-   Vector<T,ndim> originFluid(-2.4/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
-   Vector<T,ndim> extendFluid(2.4/physLength, physwidth/physLength, physspan/physLength);
+   
+   Vector<T,ndim> originFluid(-domainlenth/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
+   Vector<T,ndim> extendFluid(domainlenth/physLength, physwidth/physLength, physspan/physLength);
    IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
    // -----------Variabeln definiere Messungen
    size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
    size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
      
    //----------------------------- Geometrie aufspannen
-   Vector<T,ndim> extend{2.47/physLength, physwidth/physLength, physspan/physLength};
-   Vector<T,ndim> origin{-2.4/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.};
+   Vector<T,ndim> extend{domainlenth/physLength, physwidth/physLength, physspan/physLength};
+   Vector<T,ndim> origin{-domainlenth/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.};
    IndicatorCuboid3D<T> cuboid(extend, origin);
    CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
    cuboidDecomposition.setPeriodicity({false,false,false});
    HeuristicLoadBalancer<T> loadBalancer(cuboidDecomposition);
    
    SuperGeometry<T,ndim> superGeometry(cuboidDecomposition, loadBalancer);
-   prepareGeometry(converter, superGeometry, domainFluid, boundarytype);
+   prepareGeometry(converter, superGeometry, domainFluid);
  
    // === 3rd Step: Prepare Lattice ===
    T rho0 = 1.0; 
@@ -418,7 +378,7 @@ superGeometry.getStatistics().print();
   
    SuperLattice<T,DESCRIPTOR> sLattice(superGeometry);
    prepareLattice( converter, sLattice, superGeometry, rho0, u0, amplitude, alpha,
-                   boundarytype, dampingDepthPU, lengthDomain, dampingStrength);
+                   dampingDepthPU, lengthDomain, dampingStrength);
   
    // === 4th Step: Main Loop with Timer ===
    std::size_t iTmax = converter.getLatticeTime(physMaxT);
@@ -494,13 +454,10 @@ superGeometry.getStatistics().print();
  
    // Für die optionale Phasenmethode: physikalische Kreisfrequenz der Anregung bestimmen
    T omegaPerStep = T(0);
-   if (boundarytype == local) {
-     // in setBoundaryValues(local) wurde sin(iT * 2π/40) verwendet
-     omegaPerStep =  2. * std::numbers::pi_v<T> /40.0;
-   } else {
+   
      // periodic-Zweig bei dir nutzt 2π * 2 / 40 (zwei Perioden in 40 Schritten)
      omegaPerStep =  2. * std::numbers::pi_v<T>*2. /40.0;
-   }
+   
    const T omegaPhys = omegaPerStep / dtPhys;
  
    CSV<T> csvWriter("Welle", ';', {"iT", "t", "p1", "p2"}, ".csv");
@@ -532,7 +489,7 @@ superGeometry.getStatistics().print();
 const T betaMax = T(0.08);   // 0.03..0.12 testen
 const T rho_ref = physDensity;
 
-   if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, 0, superGeometry, boundarytype, amplitude, rho0,lambda_phys);}
+setBoundaryValues(converter, sLattice, 0, superGeometry, amplitude, rho0,lambda_phys);
    //--------------------------------------- FOR SCHLEIFE-------------------------------------------------------------------------------------------
    for (std::size_t iT=0; iT < iTmax; ++iT) {
      // === 5th Step: Definition of Initial and Boundary Conditions ===
@@ -540,8 +497,7 @@ const T rho_ref = physDensity;
      // ------------------------- Messwerte nehmen
  
      // ------------------------- Messwerte nehmen (2 Sensoren)
-     if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0,lambda_phys);}
-    
+     
    
      pressureO.execute();
      watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
