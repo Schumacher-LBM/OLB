@@ -2,7 +2,7 @@
 /* Notiz: Erzwungene Welle
  * Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. 
  * Bei dem ausführen des Programms muss mit --iTmax XXX eine Zahl angegeben werden, wieviele Iterationsdurchläufe das Programm durchläuft
- * Terminalbefehl: make clean; make; ./Freie_Welle --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
+ * Terminalbefehl: make clean; make; ./erzwungenewelle&>log.txt --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
  * To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen finden. Außerdem die Größe des Mediums angeben. Messwerte nehmen
  */
  /*  Lattice Boltzmann sample, written in C++, using the OpenLB
@@ -35,17 +35,17 @@ using BulkDynamics   = BGKdynamics<T, DESCRIPTOR>;
 using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
 
 const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
-const T lambda_phys = T(0.4);         // Lambda verändern!
-const T physDeltaX        = 0.2;     // grid spacing [m]
+const T lambda_phys       = T(0.38);         // Lambda verändern!
+const T physDeltaX        = 0.02;     // grid spacing [m]
 const T physLength        = 1.;       // length of the cuboid [m]
-const T physspan          = 2*lambda_phys;
-const T physwidth         = 2*lambda_phys;
+const T physspan          = 6.*lambda_phys;
+const T physwidth         = 6*lambda_phys;
 const T physLidVelocity   = 1.0;      // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
 const T physViscosity     = 1.5e-3;   // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
 const T physDensity       = 1.;       // fluid density of air (20°C)[kg/(m*m*m)]
 const T charL   = 1;      // z.B. deine Wellenlänge
-const int res   = 80;               // ~30–40 Zellen pro λ
-const T Ma      = 0.05;             // kleine Machzahl
+const int res   = 90;               // ~30–40 Zellen pro λ
+const T Ma      = 0.01;             // kleine Machzahl
 const T charV   = 0.003;              // charakteristische phys. Geschwindigkeit (z.B. U' = p'/(rho*c))
 const T rho0    = 1.0;
 const T nu_phys = 1.5e-5;
@@ -90,7 +90,7 @@ struct PressureO {
       // --- SPONGE REGION anlegen: äußere Hülle wird Material=4 Sponge Layer fuer den Fall local-----------------
     
       // Dicke der Hülle in Zellen:
-      const int spongeCells = 6;                       // z.B. 8 Zellen
+      const int spongeCells = 2;                       // z.B. 8 Zellen
       const T   dx          = converter.getPhysDeltaX();
       std::cout << "dx: "<<dx;
       const T   sx          = spongeCells*dx;
@@ -265,7 +265,7 @@ struct PressureO {
      std::stringstream ss;
      ss << std::setw(4) << std::setfill('0') << iT;
      T                          dist        = converter.getPhysDeltaX();
-     T                          ndatapoints = converter.getResolution(); // number of data points on line
+     T                          ndatapoints =500.; //converter.getResolution(); // number of data points on line
      AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
      T                          pmin(converter.getPhysPressure(-amplitude / 20));
      T                          pmax(converter.getPhysPressure(+amplitude / 20));
@@ -287,8 +287,8 @@ int main(int argc, char* argv[])
   outdir += "tmp_reporter/";
   singleton::directories().setOutputDir(outdir);
   size_t iTmax = args.getValueOrFallback("--iTmax", 100); // maximum number of iterations
-  size_t iTvtk = args.getValueOrFallback("--iTvtk", 100); // maximum number of iterations
-  T amplitude = args.getValueOrFallback("--a", 1e-3); // maximum number of iterations
+  size_t iTvtk = args.getValueOrFallback("--iTvtk", 1); // maximum number of iterations
+  T amplitude = args.getValueOrFallback("--a", 2e-3); // maximum number of iterations
  
   // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
   int peakN = args.getValueOrFallback("--peakN", 1);
@@ -321,16 +321,16 @@ int main(int argc, char* argv[])
   
 
   // === 2nd Step: Prepare Geometry ===
-  Vector<T,ndim> originFluid(-3*lambda_phys/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
-  Vector<T,ndim> extendFluid(3*lambda_phys/physLength, physwidth/physLength, physspan/physLength);
+  Vector<T,ndim> originFluid(-6*lambda_phys/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
+  Vector<T,ndim> extendFluid(6*lambda_phys/physLength, physwidth/physLength, physspan/physLength);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
   // -----------Variabeln definiere Messungen
   size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
   size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
     
   //----------------------------- Geometrie aufspannen
-  Vector<T,ndim> extend{3*lambda_phys/physLength, physwidth/physLength, physspan/physLength};
-  Vector<T,ndim> origin{-3*lambda_phys/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.};
+  Vector<T,ndim> extend{6*lambda_phys/physLength, physwidth/physLength, physspan/physLength};
+  Vector<T,ndim> origin{-6*lambda_phys/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.};
   IndicatorCuboid3D<T> cuboid(extend, origin);
   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
   cuboidDecomposition.setPeriodicity({false,false,false});
@@ -450,6 +450,12 @@ int main(int argc, char* argv[])
     x_phys[i] = x0 + (x1 - x0) * ( (i + T(0.5)) / T(NxLine) );
   }
  // #endif
+
+ const T cellsPerLambdaConverter = lambda_phys / converter.getPhysDeltaX();
+ clout << "Gitterpunkte pro Wellenlänge (aus Converter): " 
+     << cellsPerLambdaConverter << std::endl;
+ clout << "physViscosity: "<<physViscosity<< std::endl;
+
 
   //--------------------------------------- FOR SCHLEIFE-------------------------------------------------------------------------------------------
   for (std::size_t iT=0; iT < iTmax; ++iT) {
