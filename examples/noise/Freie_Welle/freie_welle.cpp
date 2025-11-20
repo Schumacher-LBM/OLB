@@ -1,7 +1,7 @@
   /*Notiz: FREIE WELLE
 Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. 
 Bei dem ausführen des Programms muss mit --iTmax XXX eine Zahl angegeben werden, wieviele Iterationsdurchläufe das Programm durchläuft
-Terminalbefehl: make clean; make; ./Freie_Welle&>log.txt --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
+Terminalbefehl: make clean; make; ./Freie_Welle&>log.txt --iTmax 150 --Nper (Anzahl Zeitschritte pro Periode) --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
 To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen finden. Außerdem die Größe des Mediums angeben. Messwerte nehmen
 /*  Lattice Boltzmann sample, written in C++, using the OpenLB
  *  library
@@ -31,20 +31,26 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  using BulkDynamics   = BGKdynamics<T, DESCRIPTOR>;
  using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
  const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
-    // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
-    const int lambda_lat        = 20.;     //Die Wellenlänge soll auf 10 LU abgebildet werden
-    const int nWaves            = 3.5;               // In der Domäne sollen 6 Wellen abgebildet werden
-    const T physLength          = 1.;       // length of the cuboid [m]
-    const T physspan           = 0.46;
+ // Eigenschaften Akustik  
+ T lambda_phys             = T(0.16);  // gewünschte Wellenlänge in m
+    const int nWaves          = 3.5;               // In der Domäne sollen 6 Wellen abgebildet werden
+    const T physLength        = nWaves*lambda_phys;       // length of the cuboid [m]
+    const T physspan          = 0.46;
     const T physwidth         = 0.46;
-    const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
-    const T physViscosity     = 1.5e-2;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
-    const T physDensity       = 1.;         // fluid density of air (20°C)[kg/(m*m*m)]
-    const T physMaxT          = 0.5;        // maximal simulation time [s]
-    const T physDeltaT        = 0.00078125;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
-
+    
+    //Eigenschaften Fluid
+    const T cs_phys           = 1.;
+    const T nu_phys           = 3e-3;// kinem. Viskosität [m²/s]
+    const T physMaxT          = 0.5; // max. physikalische Simulationszeit [s]
+    const T physDensity       = 1.;
+    
+    // Numerik
+    const int Nx              = 80; // Auflösung der Zellen in x-Richtung
+    const T Ma                = 0.02;
+  
  typedef enum { periodic, local } BoundaryType;
- 
+ // ------- Alles hier drueber konstant halten
+
  struct PressureO {
    static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
  
@@ -133,44 +139,25 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
   
   void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
     SuperLattice<T, DESCRIPTOR>& sLattice,
-    std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude, T rho0, T lambda_phys)
+    std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude, T rho0, T lambda_phys, int Nper, T physDeltaT)
   {
   
-    if (boundarytype == local) {
-      auto domain = superGeometry.getMaterialIndicator({3});
-  
-      // 2 Sinusperioden in 40 Zeitschritten
-      T Kreisfrequenz = 2. * std::numbers::pi_v<T> /40.0;  // WENN DU DAS AENDERST, MUSST DU ES AUCH IN DER MAIN AENDERN!!!
-      // optionaler Einschwingfaktor
-      T envelope =std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
-  
-      // Sinus-Anregung
-      AnalyticalConst3D<T,T> rhoF(1. + envelope * 1e-3 * std::sin(iT * Kreisfrequenz)); // Hier überprüfen ob das nicht eine Amplitude ist!
-      AnalyticalConst3D<T,T> uInf(0., 0., 0.);
-     
-       if(iT==0)
-       {
-         AnalyticalConst3D<T,T> rhoF(1.);       // Definiert rho auf 1
-         AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
-       }
- 
-      sLattice.defineRhoU(domain, rhoF, uInf);
-      sLattice.iniEquilibrium(domain, rhoF, uInf);
-    }
+   
   
     if (boundarytype == periodic && iT==0) {
       auto domain = superGeometry.getMaterialIndicator({1});
      
       
       T wellenzahl=2. * std::numbers::pi_v<T>/lambda_phys ;//k=2pi/lamda
-      T kreisfrequenz=343.46*wellenzahl;
+      T kreisfrequenz_LU=2. * std::numbers::pi_v<T> / (T)Nper;  // 2π / Nper Schritte
+      T kreisfrequenz_PU = kreisfrequenz_LU/physDeltaT;
       T phase =0.;
       //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
       T time= converter.getLatticeTime(iT);
       T cs=sqrt(T(1)/descriptors::invCs2<T,DESCRIPTOR>());
  
-      olb::SchallwelleRho<3, T, DESCRIPTOR> schallquelle(rho0, amplitude, wellenzahl, kreisfrequenz, phase, time, converter);
-      olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,rho0,cs,converter);
+      olb::SchallwelleRho<3, T, DESCRIPTOR> schallquelle(rho0, amplitude, wellenzahl, kreisfrequenz_PU, phase, time, converter);
+      olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz_PU,phase,time,rho0,cs,converter);
       // AnalyticalConst3D<T,T> rhoF( schallquelle);
       AnalyticalConst3D<T,T> uInf(0., 0., 0.);
   
@@ -264,30 +251,47 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    singleton::directories().setOutputDir(outdir);
    // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
    int peakN = args.getValueOrFallback("--peakN", 1);
-   T lambda_phys=args.getValueOrFallback("--lambda",0.6);
-    const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
-    // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
-    const T physDeltaX          = lambda_phys / lambda_lat;  
-    const int Nx                = nWaves*lambda_lat; 
-    const T physLength         = 1.;       // length of the cuboid [m]
-    const T domainlenth        =Nx*physDeltaX; 
-     
 
+ 
  
    
    OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
 
 
    // Provide the unit converter the characteristic entities
-   const UnitConverter<T,DESCRIPTOR> converter (
-     physDeltaX,        // physDeltaX: spacing between two lattice cells in [m]
-     physDeltaT,        // physDeltaT: time step in [s]
-     physLength,        // charPhysLength: reference length of simulation geometry in [m]
-     physLidVelocity,   // charPhysVelocity: highest expected velocity during simulation in [m/s]
-     physViscosity,     // physViscosity: physical kinematic viscosity in [m^2/s]
-     physDensity        // physDensity: physical density [kg/m^3]
-   );
-   converter.print();
+   const std::size_t res = Nx;          // Auflösung auf charL
+    const T charL         = physLength;  // charPhysLength = Domänenlänge in x
+    const T charV         = cs_phys;     // charPhysVelocity = Schallgeschwindigkeit
+
+    UnitConverterFromResolutionAndLatticeVelocity<T, DESCRIPTOR> converter(
+        res,                  // Auflösung: Zellen auf charL
+        Ma/std::sqrt(3.),     // charLatticeVelocity (u_char_lat)
+        charL,                // charPhysLength
+        charV,                // charPhysVelocity
+        nu_phys,              // physViscosity
+        physDensity           // physDensity
+    );
+    converter.print();
+
+// Für später praktisch:
+const T physDeltaX = converter.getPhysDeltaX();
+const T physDeltaT = converter.getPhysDeltaT();
+
+// Wellenlänge in Lattice-Zellen:
+const int lambda_lat = (int)std::round(lambda_phys / physDeltaX);
+
+// Vollständige Domänenlänge in x (nur Info, sollte == physLength sein):
+const T domainlength = physLength;
+
+// --- viskose Zeitskala t_v nach Krüger/Heinrichs ---
+const T t_v = lambda_phys * lambda_phys / (4.*M_PI*M_PI * nu_phys);
+clout << "lambda_phys = " << lambda_phys << " m\n";
+clout << "t_v (viskose Zeitskala) = " << t_v << " s\n";
+
+
+
+
+
    // --- Wellenzahl in physikalischen und lattice Einheiten ---
    // Nutze dieselbe λ bzw. wellenzahl wie in setBoundaryValues (hier: λ_phys = 0.5 m)
                    
@@ -308,14 +312,15 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    // === 2nd Step: Prepare Geometry ===
    BoundaryType boundarytype = periodic;
    Vector<T,ndim> originFluid(0., 0., 0.);
-   Vector<T,ndim> extendFluid(domainlenth, physwidth, physspan);
+   Vector<T,ndim> extendFluid(domainlength, physwidth, physspan);
    IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
    // -----------Variabeln definiere Messungen
    size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
    size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
-     
+   int Nper = args.getValueOrFallback("--Nper", 40);  // Anzahl Zeitschritte pro Periode
+
    //----------------------------- Geometrie aufspannen
-   Vector<T,ndim> extend{domainlenth, physwidth, physspan};
+   Vector<T,ndim> extend{domainlength, physwidth, physspan};
    Vector<T,ndim> origin{0., 0., 0.};
    IndicatorCuboid3D<T> cuboid(extend, origin);
    CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
@@ -363,8 +368,8 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    // --- Zwei Messpunkte in physikalischen Koordinaten (m)
    
    std::array<Vector<T,ndim>,2> measurePhysR = {
-     Vector<T,ndim>{domainlenth-0.3, physwidth/2., physspan/2.},
-     Vector<T,ndim>{domainlenth-0.4, physwidth/2., physspan/2.}
+     Vector<T,ndim>{domainlength-0.3, physwidth/2., physspan/2.},
+     Vector<T,ndim>{domainlength-0.4, physwidth/2., physspan/2.}
    };
    std::array<Vector<int,4>,2> measureLatticeR{};
 
@@ -376,7 +381,8 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
     const T cellsPerLambdaConverter = lambda_phys / converter.getPhysDeltaX();
     clout << "Gitterpunkte pro Wellenlänge (aus Converter): " 
         << cellsPerLambdaConverter << std::endl;
-    clout << "physViscosity: "<<physViscosity<< std::endl;
+    clout << "physViscosity: "<<nu_phys<< std::endl;
+    clout << "lambda: "<<lambda_phys<<std::endl;
    for (int k=0; k<2; ++k) {
      if (auto latticeR = cuboidDecomposition.getLatticeR(measurePhysR[k])) {
        measureLatticeR[k] = *latticeR;
@@ -421,10 +427,10 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    T omegaPerStep = T(0);
    if (boundarytype == local) {
      // in setBoundaryValues(local) wurde sin(iT * 2π/40) verwendet
-     omegaPerStep =  2. * std::numbers::pi_v<T> /40.0;
+     omegaPerStep =  2. * std::numbers::pi_v<T> /Nper;
    } else {
      // periodic-Zweig bei dir nutzt 2π * 2 / 40 (zwei Perioden in 40 Schritten)
-     omegaPerStep =  2. * std::numbers::pi_v<T>*2. /40.0;
+     omegaPerStep =  2. * std::numbers::pi_v<T>*2. /Nper;
    }
    const T omegaPhys = omegaPerStep / dtPhys;
  
@@ -452,11 +458,11 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    }
  
    //=== Uebergabe der BoundaryConditions
-   if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, 0, superGeometry, boundarytype, amplitude, rho0,lambda_phys);}
+   if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, 0, superGeometry, boundarytype, amplitude, rho0,lambda_phys, Nper,physDeltaT);}
    //--------------------------------------- FOR SCHLEIFE-------------------------------------------------------------------------------------------
    for (std::size_t iT=0; iT < iTmax; ++iT) {
      // === 5th Step: Definition of Initial and Boundary Conditions ===
-     if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0,lambda_phys);}
+     if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0,lambda_phys, Nper, physDeltaT);}
      
      // ------------------------- Messwerte nehmen
  
@@ -570,6 +576,9 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
      const T cp_peak_lat  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
      const T cs_lat_here  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
      const T ratio        = cp_peak_lat / cs_lat_here;
+
+
+
  
      if (singleton::mpi().getRank()==0) {
        std::cout << "[cp|PEAK#" << n << "] t1="<<t1<<" s, t2="<<t2<<" s"
@@ -578,6 +587,24 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
                  << " | c_p/c_s="<<ratio << "\n";
      }
  
+     if (singleton::mpi().getRank()==0) {
+      const T omega0_lat  = 2. * M_PI / (T)Nper;
+      const T omega0_phys = omega0_lat / physDeltaT;      // mit physDeltaT von converter
+  
+      const T omega0_t_v  = omega0_phys * t_v;
+      const T omega0_t_v2 = omega0_t_v * omega0_t_v;
+  
+      std::cout << "[DISP] omega0_phys = " << omega0_phys << " 1/s\n";
+      std::cout << "[DISP] (omega0 * t_v)^2 = " << omega0_t_v2 << "\n";
+  
+      CSV<T> csvDisp("dispersion_omega_tau", ';',
+          {"k_lat", "k2_lat", "omega0_phys", "t_v", "omega0_t_v2", "cp_over_cs"},
+          ".csv");
+      csvDisp.writeDataFile(0, {k_lat, k2_lat, omega0_phys, t_v, omega0_t_v2, ratio});
+  }
+  
+
+
      // CSV schreiben (eigene Datei oder an deine bestehende anhängen)
      
      CSV<T> csvPeak("cp_peak_n", ';',
