@@ -34,7 +34,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
     // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
     const int lambda_lat        = 20.;     //Die Wellenlänge soll auf 10 LU abgebildet werden
     const int nWaves            = 3.5;               // In der Domäne sollen 6 Wellen abgebildet werden
-    const T physLength         = 1.;       // length of the cuboid [m]
+    const T physLength          = 1.;       // length of the cuboid [m]
     const T physspan           = 0.46;
     const T physwidth         = 0.46;
     const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
@@ -267,20 +267,11 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    T lambda_phys=args.getValueOrFallback("--lambda",0.6);
     const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
     // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
-    const int lambda_lat        = 10.;     //Die Wellenlänge soll auf 10 LU abgebildet werden
     const T physDeltaX          = lambda_phys / lambda_lat;  
-    const int nWaves            = 3.5;               // In der Domäne sollen 6 Wellen abgebildet werden
     const int Nx                = nWaves*lambda_lat; 
     const T physLength         = 1.;       // length of the cuboid [m]
     const T domainlenth        =Nx*physDeltaX; 
-    const T physspan           = 0.46;
-    const T physwidth         = 0.46;
-    const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
-    const T physViscosity     = 1.5e-2;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
-    const T physDensity       = 1.;         // fluid density of air (20°C)[kg/(m*m*m)]
-    const T physMaxT          = 0.5;        // maximal simulation time [s]
-    const T physDeltaT        = 0.00078125;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
-    
+     
 
  
    
