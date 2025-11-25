@@ -36,19 +36,25 @@ using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, eq
 
 const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
 const T lambda_phys       = T(0.38);         // Lambda verändern!
-const T physDeltaX        = 0.02;     // grid spacing [m]
+const int lambda_lat      = 10.;            //Wieviele Zellen sollen für eine Wellenlänge genutzt werden
+const int nWaves          = 6.;
+// const T physDeltaX        = 0.02;     // grid spacing [m]
 const T physLength        = 1.;       // length of the cuboid [m]
-const T physspan          = 6.*lambda_phys;
-const T physwidth         = 6*lambda_phys;
+const T Domainelength     = 10.*lambda_phys;
+const T physspan          = 10.*lambda_phys;
+const T physwidth         = 10*lambda_phys;
 const T physLidVelocity   = 1.0;      // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
-const T physViscosity     = 1.5e-3;   // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
+const T physViscosity     = 1.5e-2;   // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
 const T physDensity       = 1.;       // fluid density of air (20°C)[kg/(m*m*m)]
-const T charL   = 1;      // z.B. deine Wellenlänge
-const int res   = 90;               // ~30–40 Zellen pro λ
-const T Ma      = 0.01;             // kleine Machzahl
-const T charV   = 0.003;              // charakteristische phys. Geschwindigkeit (z.B. U' = p'/(rho*c))
-const T rho0    = 1.0;
-const T nu_phys = 1.5e-5;
+const T physMaxT          = 0.5;        // maximal simulation time [s]
+const T physDeltaT        = 0.00078125;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
+// Alte Werte
+// const T charL   = 1;      // z.B. deine Wellenlänge
+// const int res   = 90;               // ~30–40 Zellen pro λ
+// const T Ma      = 0.01;             // kleine Machzahl
+// const T charV   = 0.003;              // charakteristische phys. Geschwindigkeit (z.B. U' = p'/(rho*c))
+// const T rho0    = 1.0;
+// const T nu_phys = 1.5e-5;
 
 
 
@@ -289,24 +295,31 @@ int main(int argc, char* argv[])
   size_t iTmax = args.getValueOrFallback("--iTmax", 100); // maximum number of iterations
   size_t iTvtk = args.getValueOrFallback("--iTvtk", 1); // maximum number of iterations
   T amplitude = args.getValueOrFallback("--a", 2e-3); // maximum number of iterations
- 
+  
+  const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
+  const T physDeltaX          = lambda_phys / lambda_lat;  
+  const int Nx                = nWaves*lambda_lat; 
+  const T physLength         = 1.;       // length of the cuboid [m]
+  const T domainlenth        =Nx*physDeltaX*2.; 
+   
+
   // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
   int peakN = args.getValueOrFallback("--peakN", 1);
 
   
   OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
 
-  // Provide the unit converter the characteristic entities
-  UnitConverterFromResolutionAndLatticeVelocity<T, DESCRIPTOR> converter(
-    (size_t)res,             // resolution = Nx auf charL
-    Ma/std::sqrt(3.),        // charLatticeVelocity
-    charL,                   // charPhysLength
-    charV,                   // charPhysVelocity
-    nu_phys,                 // physViscosity
-    rho0                     // physDensity
-    );
-    converter.print();
 
+   // Provide the unit converter the characteristic entities
+   const UnitConverter<T,DESCRIPTOR> converter (
+    physDeltaX,        // physDeltaX: spacing between two lattice cells in [m]
+    physDeltaT,        // physDeltaT: time step in [s]
+    physLength,        // charPhysLength: reference length of simulation geometry in [m]
+    physLidVelocity,   // charPhysVelocity: highest expected velocity during simulation in [m/s]
+    physViscosity,     // physViscosity: physical kinematic viscosity in [m^2/s]
+    physDensity        // physDensity: physical density [kg/m^3]
+  );
+  converter.print();
 
   // --- Wellenzahl in physikalischen und lattice Einheiten ---
   // Nutze dieselbe λ bzw. wellenzahl wie in setBoundaryValues (hier: λ_phys = 0.5 m)
@@ -321,16 +334,16 @@ int main(int argc, char* argv[])
   
 
   // === 2nd Step: Prepare Geometry ===
-  Vector<T,ndim> originFluid(-6*lambda_phys/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
-  Vector<T,ndim> extendFluid(6*lambda_phys/physLength, physwidth/physLength, physspan/physLength);
+  Vector<T,ndim> originFluid(-Domainelength/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
+  Vector<T,ndim> extendFluid(Domainelength/physLength, physwidth/physLength, physspan/physLength);
   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
   // -----------Variabeln definiere Messungen
   size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
   size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
     
   //----------------------------- Geometrie aufspannen
-  Vector<T,ndim> extend{6*lambda_phys/physLength, physwidth/physLength, physspan/physLength};
-  Vector<T,ndim> origin{-6*lambda_phys/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.};
+  Vector<T,ndim> extend{Domainelength/physLength, physwidth/physLength, physspan/physLength};
+  Vector<T,ndim> origin{-Domainelength/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.};
   IndicatorCuboid3D<T> cuboid(extend, origin);
   CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
   cuboidDecomposition.setPeriodicity({false,false,false});
@@ -373,8 +386,8 @@ int main(int argc, char* argv[])
   // --- Zwei Messpunkte in physikalischen Koordinaten (m)
 //#ifdef FEATURE_WATCHPOINTS
   std::array<Vector<T,ndim>,2> measurePhysR = {
-    Vector<T,ndim>{0.10, 0.0, 0.0},
-    Vector<T,ndim>{0.10+lambda_phys/4., 0.0, 0.0}
+    Vector<T,ndim>{1.30, 0.0, 0.0},
+    Vector<T,ndim>{1.30+lambda_phys/4., 0.0, 0.0}
   };
   std::array<Vector<int,4>,2> measureLatticeR{};
 
