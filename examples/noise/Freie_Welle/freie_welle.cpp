@@ -41,7 +41,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
     const T physwidth         = 0.46;
     const T physLength        = 4.;   // charL: feste Domänenlänge in m (NICHT mehr ändern!)
     const int Nx              = 80;     // Auflösung (fix)
-    T       nWaves            = 2.;    // kannst du von Run zu Run ändern
+    T       nWaves            = 5.;    // kannst du von Run zu Run ändern
     T       lambda_phys       = physLength / nWaves; // daraus ergibt sich die Wellenlänge
 
     //Eigenschaften Fluid
