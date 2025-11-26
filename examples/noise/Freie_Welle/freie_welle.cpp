@@ -82,7 +82,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
     // all nodes to temporary type
     superGeometry.rename(0, 2);
   
-    T dx = converter.getConversionFactorLength();
+    T dx_MeasureR = converter.getConversionFactorLength();
   
     switch (boundarytype) {
     // eternal and damping: 3 is the actual fluid; periodic: 1 is the fluid
@@ -360,8 +360,8 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    p2.reserve(iTmax);
  
    const T dtPhys = converter.getPhysDeltaT();
-   // oben sicherstellen: #include <cmath>
-   const T dx = std::sqrt(
+   // Abstand zwischen den Punkten berechnen
+   const T dx_MeasureR = std::sqrt(
      (measurePhysR[1][0] - measurePhysR[0][0]) * (measurePhysR[1][0] - measurePhysR[0][0]) +
      (measurePhysR[1][1] - measurePhysR[0][1]) * (measurePhysR[1][1] - measurePhysR[0][1]) +
      (measurePhysR[1][2] - measurePhysR[0][2]) * (measurePhysR[1][2] - measurePhysR[0][2])
@@ -402,10 +402,10 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
     // --- analytische Dispersion nach Krüger mit den Initialwerten berechnet ---
 
    const T omega0= cs_lat*T(2)*std::numbers::pi_v<T> /lambda_lat;
-   const T t_vi= T(2)*(converter.getLatticeRelaxationTime()-physDeltaT/T(2) );
+   const T t_vi= T(2)*(converter.getLatticeRelaxationTime()-T(1)/T(2) );
    const T cp_LU_over_cs_LU_analytic= 1. - (T(1)/8.) *(omega0*t_vi)*(omega0*t_vi);
    
-   clout<< "[CP/CS_LU ANALYTISCH: ]"<<cp_LU_over_cs_LU_analytic << std::endl;
+   clout<< "[CP/CS_LU ANALYTISCH: ]"<<cp_LU_over_cs_LU_analytic << "omega0 analytisch: "<<omega0<<"tvi analytisch: " <<t_vi<<std::endl;
 
 
    //--------------------------------------- FOR SCHLEIFE-------------------------------------------------------------------------------------------
@@ -425,13 +425,9 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
          localP[k] += converter.getPhysPressure(pu);                 // in phys. Druck [Pa]
        }
      }
- 
-     #ifdef PARALLEL_MODE_MPI
-     singleton::mpi().reduceVect(localP, globalP, MPI_SUM);
-     singleton::mpi().bCast(globalP.data(), globalP.size());
-     #else
-     globalP = localP;
-     #endif
+      globalP = localP;
+     
+   
  
      // Zeitreihen füllen und CSV schreiben
      p1.push_back(globalP[0]);
@@ -487,7 +483,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  for (int i = guard; i < (int)std::min<std::size_t>(p1.size(), guard+50); ++i) {
    estAmp = std::max(estAmp, std::abs(p1[i]));
  }
- const T minAmp = estAmp * T(0.2); // 20% der frühen Spitze als Schwellwert
+ const T minAmp = estAmp * T(0.2); // 20% der frühen Spitze als Schwellwert // Ist das zu viel?
  
  // --- Alle frühen Peaks beider Sensoren
  auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
@@ -501,20 +497,16 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    const T t2 = peaks2[n-1];
  
    if (t2 != t1 && std::isfinite(t1) && std::isfinite(t2)) {
-     const T cp_peak_phys = dx / std::abs(t2 - t1); // [m/s]
+     const T cp_peak_phys = dx_MeasureR / std::abs(t2 - t1); // [m/s]
      const T cp_peak_lat  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
      const T cs_lat_here  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
      const T ratio        = cp_peak_lat / cs_lat_here;
 
-     const T dx_phys    = converter.getPhysDeltaX();
-     const T dt_phys    = converter.getPhysDeltaT();
+     //const T dx_MeasureR_phys    = converter.getPhysDeltaX();
+     //const T dt_phys    = converter.getPhysDeltaT();
     
- 
-     const T lambda_lat = lambda_phys / dx_phys;  // Wellenlänge in Zellen
-     const T nu_lat     = nu_phys * dt_phys / (dx_phys * dx_phys);
-     const T tvi_lat    = lambda_lat * lambda_lat
-                        / (4.*std::numbers::pi_v<T>*std::numbers::pi_v<T> * nu_lat);
- 
+     const T nu_lat     = nu_phys * physDeltaT / (physDeltaX* physDeltaX);
+     const T tvi_lat    = T(2)*(converter.getLatticeRelaxationTime()-T(1)/T(2));
      const T omega_lat  = omegaPerStep;           // deine Gitter-Kreisfrequenz pro Schritt
      const T omega_tvi  = omega_lat * tvi_lat;
      const T omega_tvi2 = omega_tvi * omega_tvi;
@@ -569,119 +561,114 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  }
  
  
+    //  // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
  
+    //  // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
+    //  auto drop_front = [&](std::vector<T>& v, std::size_t n){
+    //    if (v.size()>n) v.erase(v.begin(), v.begin()+n);
+    //  };
+    //  {
+    //    // 1 Periode ≈ (2π / omegaPhys) Sekunden
+    //    const T Tper = 2.*std::numbers::pi_v<T> / std::max(omegaPhys, T(1e-12));
+    //    const std::size_t Ndrop = (std::size_t)std::ceil(1.0 * Tper / dtPhys); // 1 Periode
+    //    drop_front(p1, Ndrop);
+    //    drop_front(p2, Ndrop);
+    //  }
  
+    //  // Cross-Correlation (einfach, normalisiert, Lag um 0 herum suchen)
+    //  auto xcorrLag = [&](const std::vector<T>& a, const std::vector<T>& b)->int {
+    //    const int N = (int)std::min(a.size(), b.size());
+    //    if (N<=3) return 0;
+    //    // maximaler Lag heuristisch begrenzen
+    //    const int maxLag = std::min( (int)std::round(0.5 * dx_MeasureR / std::max(dtPhys, T(1e-12))), N-1 );
  
+    //    // Mittelwerte entfernen
+    //    T ma=0, mb=0; 
+    //    for(int i=0;i<N;++i){ ma+=a[i]; mb+=b[i]; } 
+    //    ma/=N; mb/=N;
  
+    //    T bestC = -1e300; 
+    //    int bestLag = 0;
+    //    for (int lag=-maxLag; lag<=maxLag; ++lag) {
+    //      T num=0, da=0, db=0;
+    //      for (int i=0;i<N;++i) {
+    //        const int j = i+lag;
+    //        if (j<0 || j>=N) continue;
+    //        const T aa = a[i]-ma;
+    //        const T bb = b[j]-mb;
+    //        num += aa*bb; da += aa*aa; db += bb*bb;
+    //      }
+    //      if (da>0 && db>0) {
+    //        const T c = num / std::sqrt(da*db);
+    //        if (c>bestC) { bestC=c; bestLag=lag; }
+    //      }
+    //    }
+    //    return bestLag;
+    //  };
  
-     // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
+    //  int lag = xcorrLag(p1,p2);
+    //  T dt = lag * dtPhys;
+    //  T cp_xcorr = dx_MeasureR / std::max(std::abs(dt), T(1e-12));
  
-     // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
-     auto drop_front = [&](std::vector<T>& v, std::size_t n){
-       if (v.size()>n) v.erase(v.begin(), v.begin()+n);
-     };
-     {
-       // 1 Periode ≈ (2π / omegaPhys) Sekunden
-       const T Tper = 2.*std::numbers::pi_v<T> / std::max(omegaPhys, T(1e-12));
-       const std::size_t Ndrop = (std::size_t)std::ceil(1.0 * Tper / dtPhys); // 1 Periode
-       drop_front(p1, Ndrop);
-       drop_front(p2, Ndrop);
-     }
+    //  if (singleton::mpi().getRank()==0) {
+    //    std::cout << "[cp|XCORR] dx_MeasureR="<<dx_MeasureR<<" m, lag="<<lag<<" Samples, dt="<<dt
+    //              <<" s -> c_p="<<cp_xcorr<<" m/s\n";
+    //  }
  
-     // Cross-Correlation (einfach, normalisiert, Lag um 0 herum suchen)
-     auto xcorrLag = [&](const std::vector<T>& a, const std::vector<T>& b)->int {
-       const int N = (int)std::min(a.size(), b.size());
-       if (N<=3) return 0;
-       // maximaler Lag heuristisch begrenzen
-       const int maxLag = std::min( (int)std::round(0.5 * dx / std::max(dtPhys, T(1e-12))), N-1 );
+    //  // -------- Optional: Phasenmethode (benötigt korrekte omegaPhys) ----------------------------------------------------------------------------------------------------------------------------
+    //  auto complexProj = [&](const std::vector<T>& p)->std::pair<T,T>{
+    //    T A=0, B=0; // Re=A, Im=B (mit -sin für Im)
+    //    const std::size_t N = p.size();
+    //    for (std::size_t n=0;n<N;++n){
+    //      const T t = n*dtPhys;
+    //      A += p[n]*std::cos(omegaPhys*t);
+    //      B += p[n]*std::sin(omegaPhys*t);
+    //    }
+    //    const T phase = std::atan2(-B, A); // Phase ∈ (-π, π]
+    //    return {A, phase};
+    //  };
  
-       // Mittelwerte entfernen
-       T ma=0, mb=0; 
-       for(int i=0;i<N;++i){ ma+=a[i]; mb+=b[i]; } 
-       ma/=N; mb/=N;
+    //  if (p1.size()>=8 && p2.size()>=8) {
+    //    auto [A1,phi1] = complexProj(p1);
+    //    auto [A2,phi2] = complexProj(p2);
  
-       T bestC = -1e300; 
-       int bestLag = 0;
-       for (int lag=-maxLag; lag<=maxLag; ++lag) {
-         T num=0, da=0, db=0;
-         for (int i=0;i<N;++i) {
-           const int j = i+lag;
-           if (j<0 || j>=N) continue;
-           const T aa = a[i]-ma;
-           const T bb = b[j]-mb;
-           num += aa*bb; da += aa*aa; db += bb*bb;
-         }
-         if (da>0 && db>0) {
-           const T c = num / std::sqrt(da*db);
-           if (c>bestC) { bestC=c; bestLag=lag; }
-         }
-       }
-       return bestLag;
-     };
+    //    T dphi = phi2 - phi1;
+    //    while (dphi >  M_PI) dphi -= 2*M_PI;
+    //    while (dphi < -M_PI) dphi += 2*M_PI;
  
-     int lag = xcorrLag(p1,p2);
-     T dt = lag * dtPhys;
-     T cp_xcorr = dx / std::max(std::abs(dt), T(1e-12));
+    //    const T cp_phase = std::abs(omegaPhys * dx_MeasureR / std::max(std::abs(dphi), T(1e-12)));
  
-     if (singleton::mpi().getRank()==0) {
-       std::cout << "[cp|XCORR] dx="<<dx<<" m, lag="<<lag<<" Samples, dt="<<dt
-                 <<" s -> c_p="<<cp_xcorr<<" m/s\n";
-     }
+    //    if (singleton::mpi().getRank()==0) {
+    //      std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys
+    //                <<" rad/s -> c_p="<<cp_phase<<" m/s\n";
+    //    }
  
-     // -------- Optional: Phasenmethode (benötigt korrekte omegaPhys) ----------------------------------------------------------------------------------------------------------------------------
-     auto complexProj = [&](const std::vector<T>& p)->std::pair<T,T>{
-       T A=0, B=0; // Re=A, Im=B (mit -sin für Im)
-       const std::size_t N = p.size();
-       for (std::size_t n=0;n<N;++n){
-         const T t = n*dtPhys;
-         A += p[n]*std::cos(omegaPhys*t);
-         B += p[n]*std::sin(omegaPhys*t);
-       }
-       const T phase = std::atan2(-B, A); // Phase ∈ (-π, π]
-       return {A, phase};
-     };
+    //      // Umrechnung nach lattice-Einheiten:
+    //          const T cp_lat_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    //          const T cp_lat_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    //          csvSummary.writeDataFile(0, {k_lat, k2_lat, cp_lat_xcorr, cp_lat_phase, cs_lat});
  
-     if (p1.size()>=8 && p2.size()>=8) {
-       auto [A1,phi1] = complexProj(p1);
-       auto [A2,phi2] = complexProj(p2);
- 
-       T dphi = phi2 - phi1;
-       while (dphi >  M_PI) dphi -= 2*M_PI;
-       while (dphi < -M_PI) dphi += 2*M_PI;
- 
-       const T cp_phase = std::abs(omegaPhys * dx / std::max(std::abs(dphi), T(1e-12)));
- 
-       if (singleton::mpi().getRank()==0) {
-         std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys
-                   <<" rad/s -> c_p="<<cp_phase<<" m/s\n";
-       }
- 
-         // Umrechnung nach lattice-Einheiten:
-             const T cp_lat_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-             const T cp_lat_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-             csvSummary.writeDataFile(0, {k_lat, k2_lat, cp_lat_xcorr, cp_lat_phase, cs_lat});
- 
-     }
+    //  }
      
-     //===Amplitudenverlauf eintragen=======
-     // RMS aus Summe der Quadrate
-     std::vector<T> p_rms(NxLine);
-     for (int i=0; i<NxLine; ++i) {
-       p_rms[i] = std::sqrt(p_rss[i] / std::max<std::size_t>(n_accum,1));
-     }
+    //  //===Amplitudenverlauf eintragen=======
+    //  // RMS aus Summe der Quadrate
+    //  std::vector<T> p_rms(NxLine);
+    //  for (int i=0; i<NxLine; ++i) {
+    //    p_rms[i] = std::sqrt(p_rss[i] / std::max<std::size_t>(n_accum,1));
+    //  }
  
-     // --- CSVs schreiben ---
-     // 1) Peak-Hüllkurve
-     CSV<T> csvAmpPeak("amplitude_peak_vs_x", ';', {"x_phys_m", "p_peak_Pa"}, ".csv");
-     for (int i=0; i<NxLine; ++i) csvAmpPeak.writeDataFile(i, {x_phys[i], p_max[i]});
+    //  // --- CSVs schreiben ---
+    //  // 1) Peak-Hüllkurve
+    //  CSV<T> csvAmpPeak("amplitude_peak_vs_x", ';', {"x_phys_m", "p_peak_Pa"}, ".csv");
+    //  for (int i=0; i<NxLine; ++i) csvAmpPeak.writeDataFile(i, {x_phys[i], p_max[i]});
  
-     // 2) RMS-Hüllkurve
-     CSV<T> csvAmpRms("amplitude_rms_vs_x", ';', {"x_phys_m", "p_rms_Pa"}, ".csv");
-     for (int i=0; i<NxLine; ++i) csvAmpRms.writeDataFile(i, {x_phys[i], p_rms[i]});
+    //  // 2) RMS-Hüllkurve
+    //  CSV<T> csvAmpRms("amplitude_rms_vs_x", ';', {"x_phys_m", "p_rms_Pa"}, ".csv");
+    //  for (int i=0; i<NxLine; ++i) csvAmpRms.writeDataFile(i, {x_phys[i], p_rms[i]});
  
-     // 3) (optional) Snapshot
-     CSV<T> csvSnap("amplitude_snapshot_vs_x", ';', {"x_phys_m", "p_snapshot_Pa"}, ".csv");
-     for (int i=0; i<NxLine; ++i) csvSnap.writeDataFile(i, {x_phys[i], p_snap[i]});
+    //  // 3) (optional) Snapshot
+    //  CSV<T> csvSnap("amplitude_snapshot_vs_x", ';', {"x_phys_m", "p_snapshot_Pa"}, ".csv");
+    //  for (int i=0; i<NxLine; ++i) csvSnap.writeDataFile(i, {x_phys[i], p_snap[i]});
  
  
  
