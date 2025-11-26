@@ -96,7 +96,7 @@
        // --- SPONGE REGION anlegen: äußere Hülle wird Material=4 Sponge Layer fuer den Fall local-----------------
      
        // Dicke der Hülle in Zellen:
-       const int spongeCells = 2;                       // z.B. 8 Zellen
+       const int spongeCells = 8;                       // z.B. 8 Zellen
        const T   dx          = converter.getPhysDeltaX();
        std::cout << "dx: "<<dx;
        const T   sx          = spongeCells*dx;
@@ -104,7 +104,7 @@
        const T   sz          = spongeCells*dx;
  
        // Gesamtgröße (m): 2.4 x physwidth x physspan, Ursprung wie oben gewählt
-       const T Lx = 2.4/physLength, Ly = physwidth/physLength, Lz = physspan/physLength;
+       const T Lx = Domainelength/physLength, Ly = physwidth/physLength, Lz = physspan/physLength;
  
        // INNERER „fluid“-Kern als Cuboid (ohne Sponge-Hülle)
        Vector<T,3> innerExtend(Lx - 2*sx, Ly - 2*sy, Lz - 2*sz);
@@ -158,9 +158,9 @@
        // (Optional) Sponge-Stärke gleichmäßig setzen (klein anfangen!)
        #ifdef descriptors_SPONGE_STRENGTH_EXISTS
        {
-         const T sigma = 0.2; // 0..1: 0=kein Dämpfen, 1=stark; starte konservativ
+         const T sigma = 0.1; // 0..1: 0=kein Dämpfen, 1=stark; starte konservativ
          AnalyticalConst3D<T,T> sigmaF(sigma);
-         sLattice.defineParameter<descriptors::SPONGE_STRENGTH>(sponge, sigmaF);
+         sLattice.defineParameter<descriptors::DAMPING>(sponge, sigmaF);
        }
        #endif
  
@@ -271,7 +271,7 @@
       std::stringstream ss;
       ss << std::setw(4) << std::setfill('0') << iT;
       T                          dist        = converter.getPhysDeltaX();
-      T                          ndatapoints =500.; //converter.getResolution(); // number of data points on line
+      T                          ndatapoints = converter.getResolution()*Domainelength; //500.; // number of data points on line
       AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
       T                          pmin(converter.getPhysPressure(-amplitude / 20));
       T                          pmax(converter.getPhysPressure(+amplitude / 20));
@@ -334,9 +334,11 @@
    
  
    // === 2nd Step: Prepare Geometry ===
-   Vector<T,ndim> originFluid(-Domainelength/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
-   Vector<T,ndim> extendFluid(Domainelength/physLength, physwidth/physLength, physspan/physLength);
-   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
+   Vector<T,ndim> extentFluid(Domainelength/physLength, physwidth/physLength, physspan/physLength);
+   for ( size_t d=0; d<ndim; d++ ) extentFluid[d] += T(2)*converter.getPhysLength(spongeCells);
+   Vector<T,ndim> originFluid;
+   for ( size_t d=0; d<ndim; d++ ) originFluid[d] = -T(0.5)*extentFluid[d];//(-Domainelength/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
+   IndicatorCuboid3D<T> domainFluid(extentFluid, originFluid);
    // -----------Variabeln definiere Messungen
    size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
    size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
@@ -387,8 +389,8 @@
  //#ifdef FEATURE_WATCHPOINTS
  //Messpunkt X-Achse nehmen
    std::array<Vector<T,ndim>,2> measurePhysR = {
-     Vector<T,ndim>{1.0, 0.0, 0.0},
-     Vector<T,ndim>{1.0+lambda_phys/4., 0.0, 0.0}
+     Vector<T,ndim>{0.80, 0.0, 0.0},
+     Vector<T,ndim>{0.80+lambda_phys/4., 0.0, 0.0}
    };
    std::array<Vector<int,4>,2> measureLatticeR{};
  
@@ -590,7 +592,7 @@
      csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), globalP[0], globalP[1], globalPD[0], globalPD[1]});
  
  
-     if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
+     //if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
  
     // #ifdef FEATURE_WATCHPOINTS
      //===Zwischenschritt Amplitudenverlauf=====
