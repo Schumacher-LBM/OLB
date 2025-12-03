@@ -39,15 +39,15 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    // const T physLength        = nWaves*lambda_phys;       // length of the cuboid [m]
     //const T physspan          = 0.46;
     //const T physwidth         = 0.46;
-    const T physLength        = 4.;   // charL: feste Domänenlänge in m (NICHT mehr ändern!)
+   
     const int Nx              = 80;     // Auflösung (fix)
-
+    const T NX_je_lambda      = 10.;
     //Eigenschaften Fluid
     const T cs_phys           = 1.;
     const T nu_phys           = 3e-2;// kinem. Viskosität [m²/s]
-    const T physMaxT          = 0.5; // max. physikalische Simulationszeit [s]
+    const T physMaxT          =  0.5; // max. physikalische Simulationszeit [s]
     const T physDensity       = 1.;
-    
+     
     // Numerik
   
     const T Ma                = 0.02;
@@ -185,7 +185,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
       T                          pmin(converter.getPhysPressure(-amplitude / 50));
       T                          pmax(converter.getPhysPressure(+amplitude / 50));
       
-      const T ndatapoints=300;
+      const T ndatapoints=170;
       linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
                         horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
       //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
@@ -203,6 +203,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    std::string outdir = args.getValueOrFallback<std::string>("--outdir", "");
 
    T       nWaves            = args.getValueOrFallback<T>("--nWaves", 4);;    // kannst du von Run zu Run ändern
+   const T physLength =nWaves * NX_je_lambda;   // charL: feste Domänenlänge in m (NICHT mehr ändern!) // nWaves*NX_je_lambda;   // charL: feste Domänenlänge in m (NICHT mehr ändern!)
    T       lambda_phys       = physLength / nWaves; // daraus ergibt sich die Wellenlänge
    //outdir += "_reporter";
    size_t maxLatticeT = args.getValueOrFallback("--iTmax", 0); // maximum number of iterations
@@ -212,8 +213,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    singleton::directories().setOutputDir(outdir);
    // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
    int peakN = args.getValueOrFallback<T>("--peakN", 1);
-
-   
+  
    OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
 
 
@@ -224,7 +224,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
 
     UnitConverterFromResolutionAndLatticeVelocity<T, DESCRIPTOR> converter(
         res,                  // Auflösung: Zellen auf charL
-        Ma/std::sqrt(3.),     // charLatticeVelocity (u_char_lat)
+        Ma/std::sqrt(3.),     // charLatticeVelocity (u_char_LU)
         charL,                // charPhysLength
         charV,                // charPhysVelocity
         nu_phys,              // physViscosity
@@ -237,14 +237,14 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
   const T physDeltaT = converter.getPhysDeltaT();
 
   // Wellenlänge in Lattice-Zellen:
-  const int lambda_lat = (int)std::round(lambda_phys / physDeltaX);
+  const int lambda_LU = (int)std::round(lambda_phys / physDeltaX);
 
   // Vollständige Domänenlänge in x (nur Info, sollte == physLength sein):
   const T domainlength = physLength;
 
   // --- viskose Zeitskala t_v nach Krüger ---
   const T t_v = lambda_phys * lambda_phys / (4.*M_PI*M_PI * nu_phys);
-  const T t_v_lat  = t_v / physDeltaT;        // [steps]
+  const T t_v_LU  = t_v / physDeltaT;        // [steps]
   clout << "lambda_phys = " << lambda_phys << " m\n";
   clout << "t_v (viskose Zeitskala) = " << t_v << " s\n";
 
@@ -252,12 +252,12 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    // Nutze dieselbe λ bzw. wellenzahl wie in setBoundaryValues (hier: λ_phys = 0.5 m)
                    
    const T k_phys = 2.*std::numbers::pi_v<T> / lambda_phys;         // [rad/m]
-   const T k_lat  = k_phys * converter.getPhysDeltaX(); // [rad per lattice cell]
-   const T k2_lat = k_lat * k_lat;
+   const T k_LU  = k_phys * converter.getPhysDeltaX(); // [rad per lattice cell]
+   const T k2_LU = k_LU * k_LU;
 
    // theoretisches c_s (lattice und physisch)
-   const T cs_lat  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());          // ≈ 1/√3
-   const T cs_phys = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * cs_lat;  // nur Info
+   const T cs_LU  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());          // ≈ 1/√3
+   const T cs_phys = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * cs_LU;  // nur Info
   // -----------Variabeln definiere Messungen
       size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
       size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
@@ -375,7 +375,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  
    CSV<T> csvWriter("Welle", ';', {"Dumb","iT", "t", "p1", "p2"}, ".csv");
    CSV<T> csvSummary("cp_vs_k", ';',
-     {"Dumb","k_lat", "k2_lat", "cp_lat_xcorr", "cp_lat_phase", "cs_lat"},
+     {"Dumb","k_LU", "k2_LU", "cp_LU_xcorr", "cp_LU_phase", "cs_LU"},
      ".csv");
  
    // Messung Plot Amplitudenverlauf
@@ -401,11 +401,11 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
 
     // --- analytische Dispersion nach Krüger mit den Initialwerten berechnet ---
 
-   const T omega0= cs_lat*T(2)*std::numbers::pi_v<T> /lambda_lat;
+   const T omega0= cs_LU*T(2)*std::numbers::pi_v<T> /lambda_LU;
    const T t_vi= T(2)*(converter.getLatticeRelaxationTime()-T(1)/T(2) );
-   const T cp_LU_over_cs_LU_analytic= 1. - (T(1)/8.) *(omega0*t_vi)*(omega0*t_vi);
-   
-   clout<< "[CP/CS_LU ANALYTISCH: ]"<<cp_LU_over_cs_LU_analytic << "omega0 analytisch: "<<omega0<<"tvi analytisch: " <<t_vi<<std::endl;
+   const T cp_LU_over_cs_LU_analytic= 1.-(T(1)/T(36))*(omega0/cs_LU)*(omega0/cs_LU) + (T(1)/8.) *(omega0*t_vi)*(omega0*t_vi); // Formel 3.17. Heinrichs
+   const T cp_LU_analytic = cp_LU_over_cs_LU_analytic*cs_LU;
+   clout<< "CP/CS_LU ANALYTISCH: "<<cp_LU_over_cs_LU_analytic << " ; omega0 analytisch: "<<omega0<<" ; tvi analytisch: " <<t_vi<< " ; Cp_LU_analytisch: "<< cp_LU_analytic<< std::endl;
 
 
    //--------------------------------------- FOR SCHLEIFE-------------------------------------------------------------------------------------------
@@ -498,30 +498,30 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  
    if (t2 != t1 && std::isfinite(t1) && std::isfinite(t2)) {
      const T cp_peak_phys = dx_MeasureR / std::abs(t2 - t1); // [m/s]
-     const T cp_peak_lat  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-     const T cs_lat_here  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
-     const T ratio        = cp_peak_lat / cs_lat_here;
+     const T cp_peak_LU  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+     const T cs_LU_here  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+     const T ratio        = cp_peak_LU / cs_LU_here;
 
      //const T dx_MeasureR_phys    = converter.getPhysDeltaX();
      //const T dt_phys    = converter.getPhysDeltaT();
     
-     const T nu_lat     = nu_phys * physDeltaT / (physDeltaX* physDeltaX);
-     const T tvi_lat    = T(2)*(converter.getLatticeRelaxationTime()-T(1)/T(2));
-     const T omega_lat  = omegaPerStep;           // deine Gitter-Kreisfrequenz pro Schritt
-     const T omega_tvi  = omega_lat * tvi_lat;
+     const T nu_LU     = nu_phys * physDeltaT / (physDeltaX* physDeltaX);
+     const T tvi_LU    = T(2)*(converter.getLatticeRelaxationTime()-T(1)/T(2));
+     const T omega_LU  = omegaPerStep;           // deine Gitter-Kreisfrequenz pro Schritt
+     const T omega_tvi  = omega_LU * tvi_LU;
      const T omega_tvi2 = omega_tvi * omega_tvi;
 
  
      if (singleton::mpi().getRank()==0) {
        std::cout << "[cp|PEAK#" << n << "] t1="<<t1<<" s, t2="<<t2<<" s"
                  << " -> c_p="<<cp_peak_phys<<" m/s"
-                 << " | c_p_lat="<<cp_peak_lat
+                 << " | c_p_LU="<<cp_peak_LU
                  << " | c_p/c_s="<<ratio << "\n";
      }
  
      if (singleton::mpi().getRank()==0) {
-      const T omega0_lat  = 2. * M_PI / (T)Nper;
-      const T omega0_phys = omega0_lat / physDeltaT;      // mit physDeltaT von converter
+      const T omega0_LU  = 2. * M_PI / (T)Nper;
+      const T omega0_phys = omega0_LU / physDeltaT;      // mit physDeltaT von converter
   
       const T omega0_t_v  = omega0_phys * t_v;
       const T omega0_t_v2 = omega0_t_v * omega0_t_v;
@@ -530,24 +530,24 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
       std::cout << "[DISP] (omega0 * t_v)^2 = " << omega0_t_v2 << "\n";
   
       CSV<T> csvDisp("dispersion_omega_tau", ';',
-          {"dumb","k_lat", "k2_lat", "omega0_phys", "t_v", "omega0_t_v2", "cp_over_cs_Simulation","cp_over_cs_analytic"},
+          {"dumb","k_LU", "k2_LU", "omega0_phys", "t_v", "omega0_t_v2", "cp_over_cs_Simulation","cp_over_cs_analytic"},
           ".csv");
-      csvDisp.writeDataFile(0, {k_lat, k2_lat, omega0_phys, t_v, omega0_t_v2, ratio, cp_LU_over_cs_LU_analytic});
+      csvDisp.writeDataFile(0, {k_LU, k2_LU, omega0_phys, t_v, omega0_t_v2, ratio, cp_LU_over_cs_LU_analytic});
   }
   
 
 
      // CSV schreiben (eigene Datei oder an deine bestehende anhängen)
      CSV<T> csvPeak("cp_peak_n", ';',
-      {"dumb","k_lat","k2_lat","peakN",
-       "cp_phys","cp_lat","cs_lat","cp_over_cs",
-       "omega_lat","tvi_lat","omega_tvi_sq","cp_over_cs_analytisch"},
+      {"dumb","k_LU","k2_LU","peakN",
+       "cp_phys","cp_LU","cs_LU","cp_over_cs",
+       "omega_LU","tvi_LU","omega_tvi_sq","cp_over_cs_analytisch"},
       ".csv");
 
     csvPeak.writeDataFile(0,{
-      k_lat, k2_lat, peakN,
-      cp_peak_phys, cp_peak_lat, cs_lat_here, ratio,
-      omega_lat, tvi_lat, T(0), cp_LU_over_cs_LU_analytic
+      k_LU, k2_LU, peakN,
+      cp_peak_phys, cp_peak_LU, cs_LU_here, ratio,
+      omega_LU, tvi_LU, T(0), cp_LU_over_cs_LU_analytic
     });
 
    } else {
@@ -644,9 +644,9 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
     //    }
  
     //      // Umrechnung nach lattice-Einheiten:
-    //          const T cp_lat_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-    //          const T cp_lat_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-    //          csvSummary.writeDataFile(0, {k_lat, k2_lat, cp_lat_xcorr, cp_lat_phase, cs_lat});
+    //          const T cp_LU_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    //          const T cp_LU_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    //          csvSummary.writeDataFile(0, {k_LU, k2_LU, cp_LU_xcorr, cp_LU_phase, cs_LU});
  
     //  }
      
