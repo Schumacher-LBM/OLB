@@ -1,8 +1,10 @@
   /*Notiz: FREIE WELLE
 Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. 
 Bei dem ausführen des Programms muss mit --iTmax XXX eine Zahl angegeben werden, wieviele Iterationsdurchläufe das Programm durchläuft
-Terminalbefehl: make clean; make; ./Freie_Welle&>log.txt --iTmax 150 --Nper (Anzahl Zeitschritte pro Periode) --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
-make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWaves $nw --peakN 2 --outdir $RNAME^
+Terminalbefehl: make clean; make; ./Freie_Welle&>log.txt --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
+make; lam=1; RNAME="test_lam${lam}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --lambda $lam --peakN 2 --outdir $RNAME^
+
+To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen finden. Außerdem die Größe des Mediums angeben. Messwerte nehmen
 /*  Lattice Boltzmann sample, written in C++, using the OpenLB
  *  library
  *
@@ -22,9 +24,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  #include "functors/analytical/analyticalF.hh"
  #include <array>   // NEU, für std::array
  #include <cmath>   // falls nicht schon vorhanden (atan2, cos, sin, sqrt)
- #include <limits>
- #include <algorithm>
-
+ 
  
  using namespace olb;
  
@@ -33,28 +33,20 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  using BulkDynamics   = BGKdynamics<T, DESCRIPTOR>;
  using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
  const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
- // Eigenschaften Akustik  
-    //T lambda_phys             = T(0.4);  // gewünschte Wellenlänge in m
-    //const int nWaves          = 3.5;               // In der Domäne sollen 6 Wellen abgebildet werden
-   // const T physLength        = nWaves*lambda_phys;       // length of the cuboid [m]
-    //const T physspan          = 0.46;
-    //const T physwidth         = 0.46;
-   
-    const int Nx              = 80;     // Auflösung (fix)
-    const T NX_je_lambda      = 10.;
-    //Eigenschaften Fluid
-    const T cs_phys           = 1.;
-    const T nu_phys           = 3e-2;// kinem. Viskosität [m²/s]
-    const T physMaxT          =  0.5; // max. physikalische Simulationszeit [s]
-    const T physDensity       = 1.;
-     
-    // Numerik
-  
-    const T Ma                = 0.02;
-  
- typedef enum { periodic, local } BoundaryType;
- // ------- Alles hier drueber konstant halten
+    // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
+    const int lambda_LU        = 20.;     //Die Wellenlänge soll auf 10 LU abgebildet werden
+    const int nWaves            = 3.5;               // In der Domäne sollen 6 Wellen abgebildet werden
+    const T physLength          = 1.;       // length of the cuboid [m]
+    const T physspan           = 0.46;
+    const T physwidth         = 0.46;
+    const T physLidVelocity   = 1.0;         // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
+    const T physViscosity     = 1.5e-2;     // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
+    const T physDensity       = 1.;         // fluid density of air (20°C)[kg/(m*m*m)]
+    const T physMaxT          = 0.5;        // maximal simulation time [s]
+    const T physDeltaT        = 0.00078125;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
 
+ typedef enum { periodic, local } BoundaryType;
+ 
  struct PressureO {
    static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
  
@@ -71,6 +63,10 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
      particle.template setField<descriptors::SCALAR>(pressure);
    }
  };
+ 
+ 
+ 
+ 
   
   // Stores geometry information in form of material numbers
   void prepareGeometry(UnitConverter<T, DESCRIPTOR> const& converter, SuperGeometry<T, ndim>& superGeometry,
@@ -82,14 +78,25 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
     // all nodes to temporary type
     superGeometry.rename(0, 2);
   
-    T dx_MeasureR = converter.getConversionFactorLength();
+    T dx = converter.getConversionFactorLength();
   
     switch (boundarytype) {
     // eternal and damping: 3 is the actual fluid; periodic: 1 is the fluid
     case periodic:{
       superGeometry.rename(2, 1);
       break;
-    } }
+    } 
+      
+    case local: {
+     superGeometry.rename(2, 1);
+     Vector<T,3> center(-physLength*2.4/2., 0., 0.); // Zentrum der Welle
+     T radius = dx;
+     IndicatorSphere3D<T> pointSource(center, radius);
+     superGeometry.rename(1,3,pointSource);
+     //superGeometry.rename(1,3,1,pointSource);
+     break;
+    }
+    }
   
     superGeometry.getStatistics().print();
   }//prepareGeometry
@@ -107,6 +114,17 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
       auto bulkIndicator = superGeometry.getMaterialIndicator(
           {1,3}); // for local bcs all around, corners remain at 2, so they are included here
       sLattice.defineDynamics<BulkDynamics>(bulkIndicator);
+    
+      switch (boundarytype) {
+      case periodic: {
+        
+        break;
+      }
+      case local: // Fuer die erzwungene Welle nutzen
+        //boundary::set<boundary::LocalPressure>(sLattice, superGeometry, 3);
+        break;
+      }
+  
       sLattice.setParameter<descriptors::OMEGA>(omega);
     
       // Make the lattice ready for simulation
@@ -117,25 +135,74 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
   
   void setBoundaryValues(const UnitConverter<T,DESCRIPTOR>& converter,
     SuperLattice<T, DESCRIPTOR>& sLattice,
-    std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude, T rho0, T lambda_phys, int Nper, T physDeltaT)
+    std::size_t iT, SuperGeometry<T,ndim>& superGeometry,BoundaryType boundarytype, T amplitude, T rho0, T lambda_phys)
   {
+  
+    if (boundarytype == local) {
+      auto domain = superGeometry.getMaterialIndicator({3});
+  
+      // 2 Sinusperioden in 40 Zeitschritten
+      T Kreisfrequenz = 2. * std::numbers::pi_v<T> /40.0;  // WENN DU DAS AENDERST, MUSST DU ES AUCH IN DER MAIN AENDERN!!!
+      // optionaler Einschwingfaktor
+      T envelope =std::sin(std::min(1.0, iT / 40.0) * std::numbers::pi_v<T> / 2.0);
+  
+      // Sinus-Anregung
+      AnalyticalConst3D<T,T> rhoF(1. + envelope * 1e-3 * std::sin(iT * Kreisfrequenz)); // Hier überprüfen ob das nicht eine Amplitude ist!
+      AnalyticalConst3D<T,T> uInf(0., 0., 0.);
+     
+       if(iT==0)
+       {
+         AnalyticalConst3D<T,T> rhoF(1.);       // Definiert rho auf 1
+         AnalyticalConst3D<T,T> uInf(0, 0,0);   // Definiert die Geschwindigkeit überall auf 0 in X und Y Richtung
+       }
+ 
+      sLattice.defineRhoU(domain, rhoF, uInf);
+      sLattice.iniEquilibrium(domain, rhoF, uInf);
+    }
+  
     if (boundarytype == periodic && iT==0) {
       auto domain = superGeometry.getMaterialIndicator({1});
- 
+     
+      
       T wellenzahl=2. * std::numbers::pi_v<T>/lambda_phys ;//k=2pi/lamda
-      //T kreisfrequenz_LU=2. * std::numbers::pi_v<T> / (T)Nper;  // 2π / Nper Schritte
-      T cs=sqrt(T(1)/T(3.));
-      T kreisfrequenz_LU= cs*wellenzahl;
-      T kreisfrequenz_PU = kreisfrequenz_LU/physDeltaT;
+
+      // Wellenzahl in lattice-Einheiten
+      const T k_LU  = wellenzahl* converter.getPhysDeltaX();
+
+      // Schallgeschwindigkeit in lattice-Einheiten
+      const T cs_lat = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+
+      // Kreisfrequenz in lattice- und physikalischen Einheiten
+      const T omega_lat   = cs_lat * k_LU;                     // ω0 = cs * k
+      const T kreisfrequenz = omega_lat / converter.getPhysDeltaT(); // [1/s]
+
       T phase =0.;
       //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
       T time= converter.getLatticeTime(iT);
-      
+      T cs=sqrt(T(1)/descriptors::invCs2<T,DESCRIPTOR>());
  
-      olb::SchallwelleRho<3, T, DESCRIPTOR> schallquelle(rho0, amplitude, wellenzahl, kreisfrequenz_PU, phase, time, converter);
-      olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz_PU,phase,time,rho0,cs,converter);
+      olb::SchallwelleRho<3, T, DESCRIPTOR> schallquelle(rho0, amplitude, wellenzahl, kreisfrequenz, phase, time, converter);
+      olb::SchallwelleGesch<3,T, DESCRIPTOR> schallquelle_geschwindigkeit(amplitude,wellenzahl,kreisfrequenz,phase,time,rho0,cs,converter);
+      // AnalyticalConst3D<T,T> rhoF( schallquelle);
       AnalyticalConst3D<T,T> uInf(0., 0., 0.);
-
+  
+  
+       // Hier wird die Geschwindigkeit im Terminal ausgegeben
+     //   Vector<T,3> punkt = {0.01, 0.0, 0.0};  // Punkt, an dem ausgewertet wird
+     //   T u[3];  // Ergebnis wird hier gespeichert
+     //   schallquelle_geschwindigkeit(u, punkt.data());
+     //   std::cout << "[iT=" << iT << ", t=" << time << "s] Geschwindigkeit an "<<punkt<<": "
+     //   << "u = (" << u[0] << ", " << u[1] << ", " << u[2] << ")\n";
+ 
+     //  // Hier wird der Druck im Terminal ausgegeben
+      
+     //  T p[3];  // Ergebnis wird hier gespeichert
+     //  schallquelle(p, punkt.data());
+     //  std::cout << "[iT=" << iT << ", t=" << time << "s] Druck an "<<punkt<<": "
+     //  << "rho = (" << p[0] << ", " << p[1] << ", " << p[2] << ")\n";
+  
+      // sLattice.defineRhoU(domain, schallquelle, uInf);
+      // sLattice.iniEquilibrium(domain, schallquelle, uInf);
       sLattice.defineRhoU(domain, schallquelle, schallquelle_geschwindigkeit);
       sLattice.iniEquilibrium(domain, schallquelle, schallquelle_geschwindigkeit);
     }
@@ -185,7 +252,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
       T                          pmin(converter.getPhysPressure(-amplitude / 50));
       T                          pmax(converter.getPhysPressure(+amplitude / 50));
       
-      const T ndatapoints=170;
+      const T ndatapoints=300;
       linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_hline_" + ss.str(), "pressure [PU]",
                         horizontal, false, false, pmin, pmax);  // TODO setRange=true (before pmin, pmax)
       //linePlot<ndim, T>(pressure_interpolation, ndatapoints, dist, "pressure_vline_" + ss.str(), "pressure [PU]", vertical,
@@ -201,77 +268,67 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    initialize(&argc, &argv);
    CLIreader args(argc, argv);
    std::string outdir = args.getValueOrFallback<std::string>("--outdir", "");
-
-   T       nWaves            = args.getValueOrFallback<T>("--nWaves", 4);;    // kannst du von Run zu Run ändern
-   const T physLength =nWaves * NX_je_lambda;   // charL: feste Domänenlänge in m (NICHT mehr ändern!) // nWaves*NX_je_lambda;   // charL: feste Domänenlänge in m (NICHT mehr ändern!)
-   T       lambda_phys       = physLength / nWaves; // daraus ergibt sich die Wellenlänge
-   //outdir += "_reporter";
+   outdir += "_reporter";
    size_t maxLatticeT = args.getValueOrFallback("--iTmax", 0); // maximum number of iterations
-   T amplitude = args.getValueOrFallback<T>("--a", 1e-3); // maximum number of iterations
+   T amplitude = args.getValueOrFallback("--a", 1e-3); // maximum number of iterations
    if (outdir == "") outdir = "./tmp/";
-   else outdir = "./tmp_" + outdir + "/";
+   else outdir = "./" + outdir + "/";
    singleton::directories().setOutputDir(outdir);
    // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
-   int peakN = args.getValueOrFallback<T>("--peakN", 1);
-  
+   int peakN = args.getValueOrFallback("--peakN", 1);
+   T lambda_phys=args.getValueOrFallback("--lambda",0.6);
+    const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
+    // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
+    
+    const int Nx                = 80.; //nWaves*lambda_LU; 
+    const T physLength         = 1.;       // length of the cuboid [m]
+    const T physDeltaX          =physLength/Nx; 
+    const T lambda_LU = lambda_phys/physDeltaX;
+    const T domainlenth        =physLength;
+
+ 
+   
    OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
 
 
    // Provide the unit converter the characteristic entities
-   const std::size_t res  = Nx;          // Auflösung auf charL
-    const T charL         = physLength;  // charPhysLength = Domänenlänge in x
-    const T charV         = cs_phys;     // charPhysVelocity = Schallgeschwindigkeit
-
-    UnitConverterFromResolutionAndLatticeVelocity<T, DESCRIPTOR> converter(
-        res,                  // Auflösung: Zellen auf charL
-        Ma/std::sqrt(3.),     // charLatticeVelocity (u_char_LU)
-        charL,                // charPhysLength
-        charV,                // charPhysVelocity
-        nu_phys,              // physViscosity
-        physDensity           // physDensity
-    );
-    converter.print();
-
-  // Für später praktisch:
-  const T physDeltaX = converter.getPhysDeltaX();
-  const T physDeltaT = converter.getPhysDeltaT();
-
-  // Wellenlänge in Lattice-Zellen:
-  const int lambda_LU = (int)std::round(lambda_phys / physDeltaX);
-
-  // Vollständige Domänenlänge in x (nur Info, sollte == physLength sein):
-  const T domainlength = physLength;
-
-  // --- viskose Zeitskala t_v nach Krüger ---
-  const T t_v = lambda_phys * lambda_phys / (4.*M_PI*M_PI * nu_phys);
-  const T t_v_LU  = t_v / physDeltaT;        // [steps]
-  clout << "lambda_phys = " << lambda_phys << " m\n";
-  clout << "t_v (viskose Zeitskala) = " << t_v << " s\n";
-
+   const UnitConverter<T,DESCRIPTOR> converter (
+     physDeltaX,        // physDeltaX: spacing between two lattice cells in [m]
+     physDeltaT,        // physDeltaT: time step in [s]
+     physLength,        // charPhysLength: reference length of simulation geometry in [m]
+     physLidVelocity,   // charPhysVelocity: highest expected velocity during simulation in [m/s]
+     physViscosity,     // physViscosity: physical kinematic viscosity in [m^2/s]
+     physDensity        // physDensity: physical density [kg/m^3]
+   );
+   converter.print();
    // --- Wellenzahl in physikalischen und lattice Einheiten ---
    // Nutze dieselbe λ bzw. wellenzahl wie in setBoundaryValues (hier: λ_phys = 0.5 m)
                    
    const T k_phys = 2.*std::numbers::pi_v<T> / lambda_phys;         // [rad/m]
    const T k_LU  = k_phys * converter.getPhysDeltaX(); // [rad per lattice cell]
    const T k2_LU = k_LU * k_LU;
-
+ 
    // theoretisches c_s (lattice und physisch)
    const T cs_LU  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());          // ≈ 1/√3
    const T cs_phys = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * cs_LU;  // nur Info
-  // -----------Variabeln definiere Messungen
-      size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
-      size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
-      int Nper = args.getValueOrFallback("--Nper", 30);  // Anzahl Zeitschritte pro Periode
+ 
+ 
+ 
+ 
+ 
+ 
+ 
    // === 2nd Step: Prepare Geometry ===
    BoundaryType boundarytype = periodic;
    Vector<T,ndim> originFluid(0., 0., 0.);
-   T physwidth = 3*converter.getPhysDeltaX();
-   Vector<T,ndim> extendFluid(domainlength, physwidth, physwidth);
+   Vector<T,ndim> extendFluid(domainlenth, physwidth, physspan);
    IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
-   
-
+   // -----------Variabeln definiere Messungen
+   size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
+   size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
+     
    //----------------------------- Geometrie aufspannen
-   Vector<T,ndim> extend{domainlength, physwidth, physwidth};
+   Vector<T,ndim> extend{domainlenth, physwidth, physspan};
    Vector<T,ndim> origin{0., 0., 0.};
    IndicatorCuboid3D<T> cuboid(extend, origin);
    CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
@@ -310,11 +367,17 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  
     util::Timer<T> timer(iTmax, superGeometry.getStatistics().getNvoxel());
     timer.start();
-   // ------Zwischenschritt: Messwerte nehmen //-------
-    
+   // ---------------------------------------Zwischenschritt: Messwerte nehmen //-----------Vorgegeben---
+   // #if defined(FEATURE_TWOD)
+   // Vector<T,ndim> measurePhysR{-0.0875,0.0052};
+   // Vector<int,3> measureLatticeR{};
+   //#elif defined(FEATURE_THREED)
+   // --- Messpunkte in physikalischen Koordinaten (m)
+   // --- Zwei Messpunkte in physikalischen Koordinaten (m)
+   
    std::array<Vector<T,ndim>,2> measurePhysR = {
-     Vector<T,ndim>{domainlength-0.12, physwidth/2., physwidth/2.},
-     Vector<T,ndim>{domainlength-0.02, physwidth/2., physwidth/2.}
+     Vector<T,ndim>{domainlenth-0.3, physwidth/2., physspan/2.},
+     Vector<T,ndim>{domainlenth-0.4, physwidth/2., physspan/2.}
    };
    std::array<Vector<int,4>,2> measureLatticeR{};
 
@@ -326,8 +389,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
     const T cellsPerLambdaConverter = lambda_phys / converter.getPhysDeltaX();
     clout << "Gitterpunkte pro Wellenlänge (aus Converter): " 
         << cellsPerLambdaConverter << std::endl;
-    clout << "physViscosity: "<<nu_phys<< std::endl;
-    clout << "lambda: "<<lambda_phys<<std::endl;
+    clout << "physViscosity: "<<physViscosity<< std::endl;
    for (int k=0; k<2; ++k) {
      if (auto latticeR = cuboidDecomposition.getLatticeR(measurePhysR[k])) {
        measureLatticeR[k] = *latticeR;
@@ -360,8 +422,8 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    p2.reserve(iTmax);
  
    const T dtPhys = converter.getPhysDeltaT();
-   // Abstand zwischen den Punkten berechnen
-   const T dx_MeasureR = std::sqrt(
+   // oben sicherstellen: #include <cmath>
+   const T dx = std::sqrt(
      (measurePhysR[1][0] - measurePhysR[0][0]) * (measurePhysR[1][0] - measurePhysR[0][0]) +
      (measurePhysR[1][1] - measurePhysR[0][1]) * (measurePhysR[1][1] - measurePhysR[0][1]) +
      (measurePhysR[1][2] - measurePhysR[0][2]) * (measurePhysR[1][2] - measurePhysR[0][2])
@@ -370,12 +432,18 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  
    // Für die optionale Phasenmethode: physikalische Kreisfrequenz der Anregung bestimmen
    T omegaPerStep = T(0);
-   omegaPerStep =  sqrt(T(1.)/T(3.))*2. * std::numbers::pi_v<T>/lambda_phys ; //2. * std::numbers::pi_v<T>*2. /Nper;
+   if (boundarytype == local) {
+     // in setBoundaryValues(local) wurde sin(iT * 2π/40) verwendet
+     omegaPerStep =  2. * std::numbers::pi_v<T> /40.0;
+   } else {
+     // periodic-Zweig bei dir nutzt 2π * 2 / 40 (zwei Perioden in 40 Schritten)
+     omegaPerStep =  2. * std::numbers::pi_v<T>*2. /40.0;
+   }
    const T omegaPhys = omegaPerStep / dtPhys;
  
-   CSV<T> csvWriter("Welle", ';', {"Dumb","iT", "t", "p1", "p2"}, ".csv");
+   CSV<T> csvWriter("Welle", ';', {"iT", "t", "p1", "p2"}, ".csv");
    CSV<T> csvSummary("cp_vs_k", ';',
-     {"Dumb","k_LU", "k2_LU", "cp_LU_xcorr", "cp_LU_phase", "cs_LU"},
+     {"dumb","k_LU", "k2_LU", "cp_LU_xcorr", "cp_LU_phase", "cs_LU","cp_over_cs_corr","cs_ana", "cp_over_cs_ana"},
      ".csv");
  
    // Messung Plot Amplitudenverlauf
@@ -389,28 +457,29 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    std::vector<T> p_snap(NxLine, T(0)); // Snapshot-Werte
    std::size_t n_accum = 0;
  
-   const T x0 = domainlength/2.;       // wie in deiner Geometrie
-   const T x1 =  -domainlength/2.;
+   const T x0 = -physLength*2.4/2.;       // wie in deiner Geometrie
+   const T x1 =  physLength*2.4/2.;
    const T y0 =  T(0), z0 = T(0);
    for (int i=0; i<NxLine; ++i) {
      x_phys[i] = x0 + (x1 - x0) * ( (i + T(0.5)) / T(NxLine) );
    }
- 
-   //=== Uebergabe der BoundaryConditions
-   if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, 0, superGeometry, boundarytype, amplitude, rho0,lambda_phys, Nper,physDeltaT);}
-
-    // --- analytische Dispersion nach Krüger mit den Initialwerten berechnet ---
-
+   // --- analytische Dispersion nach Krüger mit den Initialwerten berechnet ---
+    //=== Uebergabe der BoundaryConditions
+  if (boundarytype == periodic) {setBoundaryValues(converter, sLattice, 0, superGeometry, boundarytype, amplitude, rho0,lambda_phys);}
+    
    const T omega0= cs_LU*T(2)*std::numbers::pi_v<T> /lambda_LU;
    const T t_vi= T(2)*(converter.getLatticeRelaxationTime()-T(1)/T(2) );
    const T cp_LU_over_cs_LU_analytic= 1.-(T(1)/T(36))*(omega0/cs_LU)*(omega0/cs_LU) + (T(1)/8.) *(omega0*t_vi)*(omega0*t_vi); // Formel 3.17. Heinrichs
    const T cp_LU_analytic = cp_LU_over_cs_LU_analytic*cs_LU;
    clout<< "CP/CS_LU ANALYTISCH: "<<cp_LU_over_cs_LU_analytic << " ; omega0 analytisch: "<<omega0<<" ; tvi analytisch: " <<t_vi<< " ; Cp_LU_analytisch: "<< cp_LU_analytic<< std::endl;
 
-
    //--------------------------------------- FOR SCHLEIFE-------------------------------------------------------------------------------------------
    for (std::size_t iT=0; iT < iTmax; ++iT) {
      // === 5th Step: Definition of Initial and Boundary Conditions ===
+     if (boundarytype == local) {setBoundaryValues(converter, sLattice, iT, superGeometry, boundarytype, amplitude,rho0,lambda_phys);}
+     
+     // ------------------------- Messwerte nehmen
+ 
      // ------------------------- Messwerte nehmen (2 Sensoren)
      pressureO.execute();
      watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
@@ -425,16 +494,30 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
          localP[k] += converter.getPhysPressure(pu);                 // in phys. Druck [Pa]
        }
      }
-      globalP = localP;
-     
-   
+ 
+     #ifdef PARALLEL_MODE_MPI
+     singleton::mpi().reduceVect(localP, globalP, MPI_SUM);
+     singleton::mpi().bCast(globalP.data(), globalP.size());
+     #else
+     globalP = localP;
+     #endif
  
      // Zeitreihen füllen und CSV schreiben
      p1.push_back(globalP[0]);
      p2.push_back(globalP[1]);
      csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), globalP[0], globalP[1]});
+ 
+ 
+     // std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
+     //           << "Gemessener Druck am Punkt ("
+     //           << measurePhysR[0] << ", "
+     //           << measurePhysR[1] << ", "
+     //           << measurePhysR[2] << ") (PU): "
+     //           << T{globalMeasurements[0]}<< std::endl;
+ 
          
      if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
+ 
  
      //===Zwischenschritt Amplitudenverlauf=====
      // --- p(x,t) auf der Linie auslesen ---
@@ -446,7 +529,11 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
          if (a > p_max[i]) p_max[i] = a;      // Peak-Hüllkurve
          p_rss[i] += out*out;                 // für RMS
        }
+       // Optional: Snapshot zu einem gewünschten Zeitpunkt sichern
+       // Beispiel: Snapshot beim Maximum am ersten Sensor (wenn du t* kennst):
+       // if (iT == iT_snapshot) { p_snap = momentane Werte; }
        ++n_accum;
+ 
  
      // === 6th Step: Collide and Stream Execution ===
      sLattice.collideAndStream();
@@ -454,7 +541,9 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
      if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
      }
  
-    
+     #include <limits>
+ #include <algorithm>
+ 
  // --- Hilfsfunktion: alle Peak-Zeiten (lokale Maxima) finden, mit Parabel-Refinement
  auto findPeakTimes = [&](const std::vector<T>& p, T dt, int guardSamples, T minAmp){
    std::vector<T> peaks;
@@ -483,7 +572,7 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  for (int i = guard; i < (int)std::min<std::size_t>(p1.size(), guard+50); ++i) {
    estAmp = std::max(estAmp, std::abs(p1[i]));
  }
- const T minAmp = estAmp * T(0.2); // 20% der frühen Spitze als Schwellwert // Ist das zu viel?
+ const T minAmp = estAmp * T(0.2); // 20% der frühen Spitze als Schwellwert
  
  // --- Alle frühen Peaks beider Sensoren
  auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
@@ -497,20 +586,10 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
    const T t2 = peaks2[n-1];
  
    if (t2 != t1 && std::isfinite(t1) && std::isfinite(t2)) {
-     const T cp_peak_phys = dx_MeasureR / std::abs(t2 - t1); // [m/s]
+     const T cp_peak_phys = dx / std::abs(t2 - t1); // [m/s]
      const T cp_peak_LU  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-     const T cs_LU_here  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+     const T cs_LU_here  = T(1.)/sqrt(T(3.));   //std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
      const T ratio        = cp_peak_LU / cs_LU_here;
-
-     //const T dx_MeasureR_phys    = converter.getPhysDeltaX();
-     //const T dt_phys    = converter.getPhysDeltaT();
-    
-     const T nu_LU     = nu_phys * physDeltaT / (physDeltaX* physDeltaX);
-     const T tvi_LU    = T(2)*(converter.getLatticeRelaxationTime()-T(1)/T(2));
-     const T omega_LU  = omegaPerStep;           // deine Gitter-Kreisfrequenz pro Schritt
-     const T omega_tvi  = omega_LU * tvi_LU;
-     const T omega_tvi2 = omega_tvi * omega_tvi;
-
  
      if (singleton::mpi().getRank()==0) {
        std::cout << "[cp|PEAK#" << n << "] t1="<<t1<<" s, t2="<<t2<<" s"
@@ -518,38 +597,18 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
                  << " | c_p_LU="<<cp_peak_LU
                  << " | c_p/c_s="<<ratio << "\n";
      }
- 
-     if (singleton::mpi().getRank()==0) {
-      const T omega0_LU  = 2. * M_PI / (T)Nper;
-      const T omega0_phys = omega0_LU / physDeltaT;      // mit physDeltaT von converter
-  
-      const T omega0_t_v  = omega0_phys * t_v;
-      const T omega0_t_v2 = omega0_t_v * omega0_t_v;
-  
-      std::cout << "[DISP] omega0_phys = " << omega0_phys << " 1/s\n";
-      std::cout << "[DISP] (omega0 * t_v)^2 = " << omega0_t_v2 << "\n";
-  
-      CSV<T> csvDisp("dispersion_omega_tau", ';',
-          {"dumb","k_LU", "k2_LU", "omega0_phys", "t_v", "omega0_t_v2", "cp_over_cs_Simulation","cp_over_cs_analytic"},
-          ".csv");
-      csvDisp.writeDataFile(0, {k_LU, k2_LU, omega0_phys, t_v, omega0_t_v2, ratio, cp_LU_over_cs_LU_analytic});
-  }
-  
-
-
+     const T Abweichung= (T(1)- ratio/cp_LU_over_cs_LU_analytic)*T(100);
      // CSV schreiben (eigene Datei oder an deine bestehende anhängen)
+   
      CSV<T> csvPeak("cp_peak_n", ';',
-      {"dumb","k_LU","k2_LU","peakN",
-       "cp_phys","cp_LU","cs_LU","cp_over_cs",
-       "omega_LU","tvi_LU","omega_tvi_sq","cp_over_cs_analytisch"},
+      {"dumb","k_lat","k2_lat","peakN",
+       "cp_phys","cp_lat","cs_lat","cp_over_cs",
+       "omega_lat","tvi_lat","omega_tvi_sq","cp_over_cs_analytisch","Abweichung"},
       ".csv");
 
-    csvPeak.writeDataFile(0,{
-      k_LU, k2_LU, peakN,
-      cp_peak_phys, cp_peak_LU, cs_LU_here, ratio,
-      omega_LU, tvi_LU, T(0), cp_LU_over_cs_LU_analytic
-    });
-
+    csvPeak.writeDataFile(0,{k_LU, k2_LU, peakN, cp_peak_phys, cp_peak_LU, cs_LU_here, ratio,
+      omega0, t_vi, T(0), cp_LU_over_cs_LU_analytic,Abweichung});
+     
    } else {
      if (singleton::mpi().getRank()==0) std::cout << "[cp|PEAK#" << n << "] ungültige Peak-Zeiten.\n";
    }
@@ -561,114 +620,120 @@ make; nw=1; RNAME="test_nw${nw}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --nWav
  }
  
  
-    //  // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
  
-    //  // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
-    //  auto drop_front = [&](std::vector<T>& v, std::size_t n){
-    //    if (v.size()>n) v.erase(v.begin(), v.begin()+n);
-    //  };
-    //  {
-    //    // 1 Periode ≈ (2π / omegaPhys) Sekunden
-    //    const T Tper = 2.*std::numbers::pi_v<T> / std::max(omegaPhys, T(1e-12));
-    //    const std::size_t Ndrop = (std::size_t)std::ceil(1.0 * Tper / dtPhys); // 1 Periode
-    //    drop_front(p1, Ndrop);
-    //    drop_front(p2, Ndrop);
-    //  }
  
-    //  // Cross-Correlation (einfach, normalisiert, Lag um 0 herum suchen)
-    //  auto xcorrLag = [&](const std::vector<T>& a, const std::vector<T>& b)->int {
-    //    const int N = (int)std::min(a.size(), b.size());
-    //    if (N<=3) return 0;
-    //    // maximaler Lag heuristisch begrenzen
-    //    const int maxLag = std::min( (int)std::round(0.5 * dx_MeasureR / std::max(dtPhys, T(1e-12))), N-1 );
  
-    //    // Mittelwerte entfernen
-    //    T ma=0, mb=0; 
-    //    for(int i=0;i<N;++i){ ma+=a[i]; mb+=b[i]; } 
-    //    ma/=N; mb/=N;
  
-    //    T bestC = -1e300; 
-    //    int bestLag = 0;
-    //    for (int lag=-maxLag; lag<=maxLag; ++lag) {
-    //      T num=0, da=0, db=0;
-    //      for (int i=0;i<N;++i) {
-    //        const int j = i+lag;
-    //        if (j<0 || j>=N) continue;
-    //        const T aa = a[i]-ma;
-    //        const T bb = b[j]-mb;
-    //        num += aa*bb; da += aa*aa; db += bb*bb;
-    //      }
-    //      if (da>0 && db>0) {
-    //        const T c = num / std::sqrt(da*db);
-    //        if (c>bestC) { bestC=c; bestLag=lag; }
-    //      }
-    //    }
-    //    return bestLag;
-    //  };
  
-    //  int lag = xcorrLag(p1,p2);
-    //  T dt = lag * dtPhys;
-    //  T cp_xcorr = dx_MeasureR / std::max(std::abs(dt), T(1e-12));
+     // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
  
-    //  if (singleton::mpi().getRank()==0) {
-    //    std::cout << "[cp|XCORR] dx_MeasureR="<<dx_MeasureR<<" m, lag="<<lag<<" Samples, dt="<<dt
-    //              <<" s -> c_p="<<cp_xcorr<<" m/s\n";
-    //  }
+     // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
+     auto drop_front = [&](std::vector<T>& v, std::size_t n){
+       if (v.size()>n) v.erase(v.begin(), v.begin()+n);
+     };
+     {
+       // 1 Periode ≈ (2π / omegaPhys) Sekunden
+       const T Tper = 2.*std::numbers::pi_v<T> / std::max(omegaPhys, T(1e-12));
+       const std::size_t Ndrop = (std::size_t)std::ceil(1.0 * Tper / dtPhys); // 1 Periode
+       drop_front(p1, Ndrop);
+       drop_front(p2, Ndrop);
+     }
  
-    //  // -------- Optional: Phasenmethode (benötigt korrekte omegaPhys) ----------------------------------------------------------------------------------------------------------------------------
-    //  auto complexProj = [&](const std::vector<T>& p)->std::pair<T,T>{
-    //    T A=0, B=0; // Re=A, Im=B (mit -sin für Im)
-    //    const std::size_t N = p.size();
-    //    for (std::size_t n=0;n<N;++n){
-    //      const T t = n*dtPhys;
-    //      A += p[n]*std::cos(omegaPhys*t);
-    //      B += p[n]*std::sin(omegaPhys*t);
-    //    }
-    //    const T phase = std::atan2(-B, A); // Phase ∈ (-π, π]
-    //    return {A, phase};
-    //  };
+     // Cross-Correlation (einfach, normalisiert, Lag um 0 herum suchen)
+     auto xcorrLag = [&](const std::vector<T>& a, const std::vector<T>& b)->int {
+       const int N = (int)std::min(a.size(), b.size());
+       if (N<=3) return 0;
+       // maximaler Lag heuristisch begrenzen
+       const int maxLag = std::min( (int)std::round(0.5 * dx / std::max(dtPhys, T(1e-12))), N-1 );
  
-    //  if (p1.size()>=8 && p2.size()>=8) {
-    //    auto [A1,phi1] = complexProj(p1);
-    //    auto [A2,phi2] = complexProj(p2);
+       // Mittelwerte entfernen
+       T ma=0, mb=0; 
+       for(int i=0;i<N;++i){ ma+=a[i]; mb+=b[i]; } 
+       ma/=N; mb/=N;
  
-    //    T dphi = phi2 - phi1;
-    //    while (dphi >  M_PI) dphi -= 2*M_PI;
-    //    while (dphi < -M_PI) dphi += 2*M_PI;
+       T bestC = -1e300; 
+       int bestLag = 0;
+       for (int lag=-maxLag; lag<=maxLag; ++lag) {
+         T num=0, da=0, db=0;
+         for (int i=0;i<N;++i) {
+           const int j = i+lag;
+           if (j<0 || j>=N) continue;
+           const T aa = a[i]-ma;
+           const T bb = b[j]-mb;
+           num += aa*bb; da += aa*aa; db += bb*bb;
+         }
+         if (da>0 && db>0) {
+           const T c = num / std::sqrt(da*db);
+           if (c>bestC) { bestC=c; bestLag=lag; }
+         }
+       }
+       return bestLag;
+     };
  
-    //    const T cp_phase = std::abs(omegaPhys * dx_MeasureR / std::max(std::abs(dphi), T(1e-12)));
+     int lag = xcorrLag(p1,p2);
+     T dt = lag * dtPhys;
+     T cp_xcorr = dx / std::max(std::abs(dt), T(1e-12));
  
-    //    if (singleton::mpi().getRank()==0) {
-    //      std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys
-    //                <<" rad/s -> c_p="<<cp_phase<<" m/s\n";
-    //    }
+     if (singleton::mpi().getRank()==0) {
+       std::cout << "[cp|XCORR] dx="<<dx<<" m, lag="<<lag<<" Samples, dt="<<dt
+                 <<" s -> c_p="<<cp_xcorr<<" m/s\n";
+     }
  
-    //      // Umrechnung nach lattice-Einheiten:
-    //          const T cp_LU_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-    //          const T cp_LU_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-    //          csvSummary.writeDataFile(0, {k_LU, k2_LU, cp_LU_xcorr, cp_LU_phase, cs_LU});
+     // -------- Optional: Phasenmethode (benötigt korrekte omegaPhys) ----------------------------------------------------------------------------------------------------------------------------
+     auto complexProj = [&](const std::vector<T>& p)->std::pair<T,T>{
+       T A=0, B=0; // Re=A, Im=B (mit -sin für Im)
+       const std::size_t N = p.size();
+       for (std::size_t n=0;n<N;++n){
+         const T t = n*dtPhys;
+         A += p[n]*std::cos(omegaPhys*t);
+         B += p[n]*std::sin(omegaPhys*t);
+       }
+       const T phase = std::atan2(-B, A); // Phase ∈ (-π, π]
+       return {A, phase};
+     };
  
-    //  }
+     if (p1.size()>=8 && p2.size()>=8) {
+       auto [A1,phi1] = complexProj(p1);
+       auto [A2,phi2] = complexProj(p2);
+ 
+       T dphi = phi2 - phi1;
+       while (dphi >  M_PI) dphi -= 2*M_PI;
+       while (dphi < -M_PI) dphi += 2*M_PI;
+ 
+       const T cp_phase = std::abs(omegaPhys * dx / std::max(std::abs(dphi), T(1e-12)));
+ 
+       if (singleton::mpi().getRank()==0) {
+         std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys
+                   <<" rad/s -> c_p="<<cp_phase<<" m/s\n";
+       }
+ 
+         // Umrechnung nach lattice-Einheiten:
+             const T cp_LU_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+             const T cp_LU_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+             const T cp_cs_corr  = cp_LU_xcorr/cs_LU;
+             csvSummary.writeDataFile(0, {k_LU, k2_LU, cp_LU_xcorr, cp_LU_phase, cs_LU, cp_cs_corr,cp_LU_analytic,cp_LU_over_cs_LU_analytic});
+ 
+     }
      
-    //  //===Amplitudenverlauf eintragen=======
-    //  // RMS aus Summe der Quadrate
-    //  std::vector<T> p_rms(NxLine);
-    //  for (int i=0; i<NxLine; ++i) {
-    //    p_rms[i] = std::sqrt(p_rss[i] / std::max<std::size_t>(n_accum,1));
-    //  }
+     //===Amplitudenverlauf eintragen=======
+     // RMS aus Summe der Quadrate
+     std::vector<T> p_rms(NxLine);
+     for (int i=0; i<NxLine; ++i) {
+       p_rms[i] = std::sqrt(p_rss[i] / std::max<std::size_t>(n_accum,1));
+     }
  
-    //  // --- CSVs schreiben ---
-    //  // 1) Peak-Hüllkurve
-    //  CSV<T> csvAmpPeak("amplitude_peak_vs_x", ';', {"x_phys_m", "p_peak_Pa"}, ".csv");
-    //  for (int i=0; i<NxLine; ++i) csvAmpPeak.writeDataFile(i, {x_phys[i], p_max[i]});
+     // --- CSVs schreiben ---
+     // 1) Peak-Hüllkurve
+     CSV<T> csvAmpPeak("amplitude_peak_vs_x", ';', {"x_phys_m", "p_peak_Pa"}, ".csv");
+     for (int i=0; i<NxLine; ++i) csvAmpPeak.writeDataFile(i, {x_phys[i], p_max[i]});
  
-    //  // 2) RMS-Hüllkurve
-    //  CSV<T> csvAmpRms("amplitude_rms_vs_x", ';', {"x_phys_m", "p_rms_Pa"}, ".csv");
-    //  for (int i=0; i<NxLine; ++i) csvAmpRms.writeDataFile(i, {x_phys[i], p_rms[i]});
+     // 2) RMS-Hüllkurve
+     CSV<T> csvAmpRms("amplitude_rms_vs_x", ';', {"x_phys_m", "p_rms_Pa"}, ".csv");
+     for (int i=0; i<NxLine; ++i) csvAmpRms.writeDataFile(i, {x_phys[i], p_rms[i]});
  
-    //  // 3) (optional) Snapshot
-    //  CSV<T> csvSnap("amplitude_snapshot_vs_x", ';', {"x_phys_m", "p_snapshot_Pa"}, ".csv");
-    //  for (int i=0; i<NxLine; ++i) csvSnap.writeDataFile(i, {x_phys[i], p_snap[i]});
+     // 3) (optional) Snapshot
+     CSV<T> csvSnap("amplitude_snapshot_vs_x", ';', {"x_phys_m", "p_snapshot_Pa"}, ".csv");
+     for (int i=0; i<NxLine; ++i) csvSnap.writeDataFile(i, {x_phys[i], p_snap[i]});
  
  
  
