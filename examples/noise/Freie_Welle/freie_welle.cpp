@@ -170,11 +170,11 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
       const T k_LU  = wellenzahl* converter.getPhysDeltaX();
 
       // Schallgeschwindigkeit in lattice-Einheiten
-      const T cs_lat = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+      const T cs_LU = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
 
       // Kreisfrequenz in lattice- und physikalischen Einheiten
-      const T omega_lat   = cs_lat * k_LU;                     // ω0 = cs * k
-      const T kreisfrequenz = omega_lat / converter.getPhysDeltaT(); // [1/s]
+      const T omega_LU   = cs_LU * k_LU;                     // ω0 = cs * k
+      const T kreisfrequenz = omega_LU / converter.getPhysDeltaT(); // [1/s]
 
       T phase =0.;
       //T time = converter.getPhysTime(iT);  // physikalische Zeit aus Lattice-Zeit
@@ -277,6 +277,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
    int peakN = args.getValueOrFallback("--peakN", 1);
    T lambda_phys=args.getValueOrFallback("--lambda",0.6);
+   T nPer = args.getValueOrFallback("--nPer",40.);
     const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
     // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
     
@@ -431,14 +432,8 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  
  
    // Für die optionale Phasenmethode: physikalische Kreisfrequenz der Anregung bestimmen
-   T omegaPerStep = T(0);
-   if (boundarytype == local) {
-     // in setBoundaryValues(local) wurde sin(iT * 2π/40) verwendet
-     omegaPerStep =  2. * std::numbers::pi_v<T> /40.0;
-   } else {
-     // periodic-Zweig bei dir nutzt 2π * 2 / 40 (zwei Perioden in 40 Schritten)
-     omegaPerStep =  2. * std::numbers::pi_v<T>*2. /40.0;
-   }
+    T omegaPerStep =  cs_LU*k_LU;
+   
    const T omegaPhys = omegaPerStep / dtPhys;
  
    CSV<T> csvWriter("Welle", ';', {"iT", "t", "p1", "p2"}, ".csv");
@@ -601,9 +596,9 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
      // CSV schreiben (eigene Datei oder an deine bestehende anhängen)
    
      CSV<T> csvPeak("cp_peak_n", ';',
-      {"dumb","k_lat","k2_lat","peakN",
-       "cp_phys","cp_lat","cs_lat","cp_over_cs",
-       "omega_lat","tvi_lat","omega_tvi_sq","cp_over_cs_analytisch","Abweichung"},
+      {"dumb","k_LU","k2_LU","peakN",
+       "cp_phys","cp_LU","cs_LU","cp_over_cs",
+       "omega_LU","tvi_LU","omega_tvi_sq","cp_over_cs_analytisch","Abweichung"},
       ".csv");
 
     csvPeak.writeDataFile(0,{k_LU, k2_LU, peakN, cp_peak_phys, cp_peak_LU, cs_LU_here, ratio,
