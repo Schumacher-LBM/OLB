@@ -24,7 +24,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  #include "functors/analytical/analyticalF.hh"
  #include <array>   // NEU, für std::array
  #include <cmath>   // falls nicht schon vorhanden (atan2, cos, sin, sqrt)
- 
+ #include <complex>
  
  using namespace olb;
  
@@ -275,7 +275,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    else outdir = "./" + outdir + "/";
    singleton::directories().setOutputDir(outdir);
    // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
-   int peakN = args.getValueOrFallback("--peakN", 1);
+   int peakN = args.getValueOrFallback("--peakN", 2);
    T lambda_phys=args.getValueOrFallback("--lambda",0.6);
    T nPer = args.getValueOrFallback("--nPer",40.);
     const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
@@ -377,8 +377,8 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    // --- Zwei Messpunkte in physikalischen Koordinaten (m)
    
    std::array<Vector<T,ndim>,2> measurePhysR = {
-     Vector<T,ndim>{domainlenth-0.3, physwidth/2., physspan/2.},
-     Vector<T,ndim>{domainlenth-0.4, physwidth/2., physspan/2.}
+     Vector<T,ndim>{domainlenth-0.4, physwidth/2., physspan/2.},
+     Vector<T,ndim>{domainlenth-0.3, physwidth/2., physspan/2.}
    };
    std::array<Vector<int,4>,2> measureLatticeR{};
 
@@ -535,203 +535,253 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
      // === 7th Step: Computation and Output of the Results ===
      if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
      }
- 
-     #include <limits>
- #include <algorithm>
- 
- // --- Hilfsfunktion: alle Peak-Zeiten (lokale Maxima) finden, mit Parabel-Refinement
- auto findPeakTimes = [&](const std::vector<T>& p, T dt, int guardSamples, T minAmp){
-   std::vector<T> peaks;
-   const int N = (int)p.size();
-   const int iStart = std::min(std::max(guardSamples, 1), N-3);
- 
-   for (int i = iStart+1; i < N-1; ++i) {
-     if (p[i] > minAmp && p[i] > p[i-1] && p[i] > p[i+1]) {
-       // Parabolische Subsample-Interpolation um i
-       const T a = p[i-1] - 2*p[i] + p[i+1];
-       const T b = p[i-1] - p[i+1];
-       T delta = T(0);
-       if (std::abs(a) > T(1e-30)) {
-         delta = b / (2*a);                 // ideal in [-0.5, 0.5]
-         delta = std::clamp(delta, T(-0.5), T(0.5));
-       }
-       peaks.push_back( (i + delta) * dt ); // physische Zeit [s]
-     }
-   }
-   return peaks;
- };
- 
- // --- Parameter für die Peak-Suche
- const int guard = 5; // ein paar erste Samples ignorieren
- T estAmp = T(0);
- for (int i = guard; i < (int)std::min<std::size_t>(p1.size(), guard+50); ++i) {
-   estAmp = std::max(estAmp, std::abs(p1[i]));
- }
- const T minAmp = estAmp * T(0.2); // 20% der frühen Spitze als Schwellwert
- 
- // --- Alle frühen Peaks beider Sensoren
- auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
- auto peaks2 = findPeakTimes(p2, dtPhys, guard, minAmp);
- 
- // --- gewünschten Peak wählen (1=erster, 2=zweiter, ...)
- //     (CLI: --peakN 2 für zweiten Wellenberg)
- const int n = std::max(1, peakN);
- if ((int)peaks1.size() >= n && (int)peaks2.size() >= n) {
-   const T t1 = peaks1[n-1];
-   const T t2 = peaks2[n-1];
- 
-   if (t2 != t1 && std::isfinite(t1) && std::isfinite(t2)) {
-     const T cp_peak_phys = dx / std::abs(t2 - t1); // [m/s]
-     const T cp_peak_LU  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-     const T cs_LU_here  = T(1.)/sqrt(T(3.));   //std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
-     const T ratio        = cp_peak_LU / cs_LU_here;
- 
-     if (singleton::mpi().getRank()==0) {
-       std::cout << "[cp|PEAK#" << n << "] t1="<<t1<<" s, t2="<<t2<<" s"
-                 << " -> c_p="<<cp_peak_phys<<" m/s"
-                 << " | c_p_LU="<<cp_peak_LU
-                 << " | c_p/c_s="<<ratio << "\n";
-     }
-     const T Abweichung= (T(1)- ratio/cp_LU_over_cs_LU_analytic)*T(100);
-     // CSV schreiben (eigene Datei oder an deine bestehende anhängen)
-   
-     CSV<T> csvPeak("cp_peak_n", ';',
-      {"dumb","k_LU","k2_LU","peakN",
-       "cp_phys","cp_LU","cs_LU","cp_over_cs",
-       "omega_LU","tvi_LU","omega_tvi_sq","cp_over_cs_analytisch","Abweichung"},
-      ".csv");
 
-    csvPeak.writeDataFile(0,{k_LU, k2_LU, peakN, cp_peak_phys, cp_peak_LU, cs_LU_here, ratio,
-      omega0, t_vi, T(0), cp_LU_over_cs_LU_analytic,Abweichung});
-     
-   } else {
-     if (singleton::mpi().getRank()==0) std::cout << "[cp|PEAK#" << n << "] ungültige Peak-Zeiten.\n";
-   }
- } else {
-   if (singleton::mpi().getRank()==0) {
-     std::cout << "[cp|PEAK#" << n << "] Nicht genug Peaks gefunden: "
-               << "sensor1="<<peaks1.size()<<", sensor2="<<peaks2.size()<<"\n";
-   }
- }
- 
- 
- 
- 
- 
- 
- 
-     // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
- 
-     // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
-     auto drop_front = [&](std::vector<T>& v, std::size_t n){
-       if (v.size()>n) v.erase(v.begin(), v.begin()+n);
-     };
-     {
-       // 1 Periode ≈ (2π / omegaPhys) Sekunden
-       const T Tper = 2.*std::numbers::pi_v<T> / std::max(omegaPhys, T(1e-12));
-       const std::size_t Ndrop = (std::size_t)std::ceil(1.0 * Tper / dtPhys); // 1 Periode
-       drop_front(p1, Ndrop);
-       drop_front(p2, Ndrop);
-     }
- 
-     // Cross-Correlation (einfach, normalisiert, Lag um 0 herum suchen)
-     auto xcorrLag = [&](const std::vector<T>& a, const std::vector<T>& b)->int {
-       const int N = (int)std::min(a.size(), b.size());
-       if (N<=3) return 0;
-       // maximaler Lag heuristisch begrenzen
-       const int maxLag = std::min( (int)std::round(0.5 * dx / std::max(dtPhys, T(1e-12))), N-1 );
- 
-       // Mittelwerte entfernen
-       T ma=0, mb=0; 
-       for(int i=0;i<N;++i){ ma+=a[i]; mb+=b[i]; } 
-       ma/=N; mb/=N;
- 
-       T bestC = -1e300; 
-       int bestLag = 0;
-       for (int lag=-maxLag; lag<=maxLag; ++lag) {
-         T num=0, da=0, db=0;
-         for (int i=0;i<N;++i) {
-           const int j = i+lag;
-           if (j<0 || j>=N) continue;
-           const T aa = a[i]-ma;
-           const T bb = b[j]-mb;
-           num += aa*bb; da += aa*aa; db += bb*bb;
-         }
-         if (da>0 && db>0) {
-           const T c = num / std::sqrt(da*db);
-           if (c>bestC) { bestC=c; bestLag=lag; }
-         }
-       }
-       return bestLag;
-     };
- 
-     int lag = xcorrLag(p1,p2);
-     T dt = lag * dtPhys;
-     T cp_xcorr = dx / std::max(std::abs(dt), T(1e-12));
- 
-     if (singleton::mpi().getRank()==0) {
-       std::cout << "[cp|XCORR] dx="<<dx<<" m, lag="<<lag<<" Samples, dt="<<dt
-                 <<" s -> c_p="<<cp_xcorr<<" m/s\n";
-     }
- 
-     // -------- Optional: Phasenmethode (benötigt korrekte omegaPhys) ----------------------------------------------------------------------------------------------------------------------------
-     auto complexProj = [&](const std::vector<T>& p)->std::pair<T,T>{
-       T A=0, B=0; // Re=A, Im=B (mit -sin für Im)
-       const std::size_t N = p.size();
-       for (std::size_t n=0;n<N;++n){
-         const T t = n*dtPhys;
-         A += p[n]*std::cos(omegaPhys*t);
-         B += p[n]*std::sin(omegaPhys*t);
-       }
-       const T phase = std::atan2(-B, A); // Phase ∈ (-π, π]
-       return {A, phase};
-     };
- 
-     if (p1.size()>=8 && p2.size()>=8) {
-       auto [A1,phi1] = complexProj(p1);
-       auto [A2,phi2] = complexProj(p2);
- 
-       T dphi = phi2 - phi1;
-       while (dphi >  M_PI) dphi -= 2*M_PI;
-       while (dphi < -M_PI) dphi += 2*M_PI;
- 
-       const T cp_phase = std::abs(omegaPhys * dx / std::max(std::abs(dphi), T(1e-12)));
- 
-       if (singleton::mpi().getRank()==0) {
-         std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys
-                   <<" rad/s -> c_p="<<cp_phase<<" m/s\n";
-       }
- 
-         // Umrechnung nach lattice-Einheiten:
-             const T cp_LU_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-             const T cp_LU_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-             const T cp_cs_corr  = cp_LU_xcorr/cs_LU;
-             csvSummary.writeDataFile(0, {k_LU, k2_LU, cp_LU_xcorr, cp_LU_phase, cs_LU, cp_cs_corr,cp_LU_analytic,cp_LU_over_cs_LU_analytic});
- 
-     }
-     
-     //===Amplitudenverlauf eintragen=======
-     // RMS aus Summe der Quadrate
-     std::vector<T> p_rms(NxLine);
-     for (int i=0; i<NxLine; ++i) {
-       p_rms[i] = std::sqrt(p_rss[i] / std::max<std::size_t>(n_accum,1));
-     }
- 
-     // --- CSVs schreiben ---
-     // 1) Peak-Hüllkurve
-     CSV<T> csvAmpPeak("amplitude_peak_vs_x", ';', {"x_phys_m", "p_peak_Pa"}, ".csv");
-     for (int i=0; i<NxLine; ++i) csvAmpPeak.writeDataFile(i, {x_phys[i], p_max[i]});
- 
-     // 2) RMS-Hüllkurve
-     CSV<T> csvAmpRms("amplitude_rms_vs_x", ';', {"x_phys_m", "p_rms_Pa"}, ".csv");
-     for (int i=0; i<NxLine; ++i) csvAmpRms.writeDataFile(i, {x_phys[i], p_rms[i]});
- 
-     // 3) (optional) Snapshot
-     CSV<T> csvSnap("amplitude_snapshot_vs_x", ';', {"x_phys_m", "p_snapshot_Pa"}, ".csv");
-     for (int i=0; i<NxLine; ++i) csvSnap.writeDataFile(i, {x_phys[i], p_snap[i]});
- 
- 
- 
+
+     // Kreuzkorrelation völlig neu implementiert:
+     CSV<T> csvXCorr("cp_xcorr", ';',
+      {"k_LU", "k2_LU",
+       "cp_phys", "cp_LU", "cp_over_cs",
+       "cp_LU_analytic", "cp_over_cs_analytic"},
+      ".csv");
+  
+     // Hier werden die ersten Perioden verworfen, damit die Welle Zeit zum einschwingen hat
+    //  auto drop_front = [&](std::vector<T>& v, std::size_t n){
+    //   if (v.size()>n) v.erase(v.begin(), v.begin()+n);
+    // };
+    
+    // const T Tper = 2.*std::numbers::pi_v<T> / omegaPhys;  // omegaPhys korrekt setzen!
+    // const std::size_t Ndrop = (std::size_t)std::ceil(1.0 * Tper / dtPhys); // z.B. 1 Perioden
+    // drop_front(p1, Ndrop);
+    // drop_front(p2, Ndrop);
+
+    // //
+    // auto subtract_mean = [](std::vector<T>& v){
+    //   T m = 0;
+    //   for (auto x : v) m += x;
+    //   m /= (T)v.size();
+    //   for (auto& x : v) x -= m;
+    // };
+    // subtract_mean(p1);
+    // subtract_mean(p2);
+    
+
+    // // Subsample Korrelation und Berechnung
+    // auto estimateLagFromXcorr = [&](const std::vector<T>& a,
+    //   const std::vector<T>& b) -> T
+    // {
+    // const int N = (int)std::min(a.size(), b.size());
+    // if (N < 10) return T(0);  // zu wenig Daten
+
+    // // Wir nehmen nur den letzten Teil (z.B. 5 Perioden), um sicher eingeschwungen zu sein:
+    // const int Nuse = N; // oder z.B. min(N, (int)std::round(5*Tper/dtPhys));
+    // const int start = N - Nuse;
+
+    // // max. Lag: z.B. +/- Nuse/4 oder +/- (dx / cp)*1.5
+    // const int maxLag = std::min(Nuse/4, Nuse-1);
+
+    // std::vector<T> R(2*maxLag+1, T(0)); // R[lag + maxLag]
+
+    // // Kreuzkorrelation R(lag) = sum a[n]*b[n+lag]
+    //   for (int lag = -maxLag; lag <= maxLag; ++lag) {
+    //   T num = 0;
+    //   for (int n = 0; n < Nuse; ++n) {
+    //   int i = start + n;
+    //   int j = i + lag;
+    //   if (j < 0 || j >= N) continue;
+    //   num += a[i] * b[j];
+    //   }
+    //   R[lag + maxLag] = num;
+    //   }
+
+    //   // Maximum finden
+    //   int kMax = 0;
+    //   T Rmax = std::numeric_limits<T>::lowest();
+    //   for (int k = 0; k < (int)R.size(); ++k) {
+    //   if (R[k] > Rmax) { Rmax = R[k]; kMax = k; }
+    //   }
+
+    //   // Index → Lag in Samples
+    //   int lag0 = kMax - maxLag;
+
+    //   // Subsample-Parabel um das Maximum (wie bei deinen Peaks)
+    //   T lagFine = (T)lag0;
+    //   if (kMax > 0 && kMax < (int)R.size()-1) {
+    //   const T Rm = R[kMax-1];
+    //   const T Rc = R[kMax];
+    //   const T Rp = R[kMax+1];
+    //   const T a2 = Rm - 2*Rc + Rp;
+    //   const T b2 = Rm - Rp;
+    //   if (std::abs(a2) > T(1e-30)) {
+    //   T delta = b2 / (2*a2);           // in [-0.5, 0.5] erwartet
+    //   delta = std::clamp(delta, T(-0.5), T(0.5));
+    //   lagFine += delta;
+    //   }
+    //   }
+
+    //   return lagFine; // in Samples (kann nicht-ganzzahlig sein)
+    //   };
+
+    //   T lagFine = estimateLagFromXcorr(p1, p2);   // in Samples
+    //   T dt = lagFine * dtPhys;                    // Zeitverschiebung
+    //   T cp_xcorr = dx / std::abs(dt);             // [m/s]
+
+    //   // cp_xcorr ist in phys [m/s]
+    //   T cp_xcorr_LU = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    //   T cp_xcorr_over_cs = cp_xcorr_LU / cs_LU;
+
+    //   csvXCorr.writeDataFile(0, {
+    //       k_LU,
+    //       k2_LU,
+    //       cp_xcorr,
+    //       cp_xcorr_LU,
+    //       cp_xcorr_over_cs,
+    //       cp_LU_analytic,
+    //       cp_LU_over_cs_LU_analytic
+    //   });
+
+    // Phasenmethode implementieren
+    
+    // const std::size_t N = std::min(p1.size(), p2.size());
+    // std::complex<T> A1(0, 0), A2(0, 0);
+
+    // for (std::size_t n = 0; n < N; ++n) {
+    //   T t = n * dtPhys;
+    //   T c = std::cos(omegaPhys * t);
+    //   T s = std::sin(omegaPhys * t);
+    //   // e^{-i ω t} = cos(ω t) - i sin(ω t)
+    //   std::complex<T> e_minus_iwt(c, -s);
+
+    //   A1 += p1[n] * e_minus_iwt;
+    //   A2 += p2[n] * e_minus_iwt;
+    // }
+
+    // // Normierung (optional, ändert nur Amplituden, nicht die Phase):
+    // A1 *= (T(2) / (T)N);
+    // A2 *= (T(2) / (T)N);
+
+    // T phi1 = std::arg(A1);  // in rad, Bereich (-π, π]
+    // T phi2 = std::arg(A2);
+    
+    // T dphi = phi2 - phi1;
+    
+    // // In Bereich (-π, π] „wrappen“
+    // while (dphi >  M_PI) dphi -= T(2)*M_PI;
+    // while (dphi < -M_PI) dphi += T(2)*M_PI;
+    
+    // T cp_phys = std::abs(omegaPhys * dx / std::max(std::abs(dphi), T(1e-12)));  // [m/s]
+    // T cp_LU   = cp_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    // // T cs_LU   = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+    // T cp_over_cs = cp_LU / cs_LU;
+
+    // if (singleton::mpi().getRank()==0) {
+    //   CSV<T> csvPhase("cp_phase_method", ';',
+    //     {"k_LU", "k2_LU",
+    //      "cp_phys", "cp_LU", "cp_over_cs",
+    //      "cp_LU_analytic", "cp_over_cs_analytic"},
+    //     ".csv");
+    
+    //   csvPhase.writeDataFile(0, {
+    //     k_LU,
+    //     k2_LU,
+    //     cp_phys,
+    //     cp_LU,
+    //     cp_over_cs,
+    //     cp_LU_analytic,
+    //     cp_LU_over_cs_LU_analytic
+    //   });
+    // }
+    
+    // Messmethode an einem Punkt
+    auto drop_front = [&](std::vector<T>& v, std::size_t n){
+      if (v.size()>n) v.erase(v.begin(), v.begin()+n);
+    };
+    
+    const T omega_theo = cs_LU * (T(2)*std::numbers::pi_v<T> / lambda_LU) / converter.getPhysDeltaT(); 
+    // oder: omega_theo = 2*pi*cs_phys / lambda_phys;
+    
+    const T Tper_theo = T(2)*std::numbers::pi_v<T> / omega_theo;
+    const std::size_t Ndrop = (std::size_t)std::ceil(2.0 * Tper_theo / dtPhys); // z.B. 2 Perioden
+    
+    drop_front(p1, Ndrop);
+    auto findPeakTimes = [&](const std::vector<T>& p, T dt, int guardSamples, T minAmp){
+      std::vector<T> peaks;
+      const int N = (int)p.size();
+      const int iStart = std::min(std::max(guardSamples, 1), N-3);
+   
+      for (int i = iStart/*+1*/; i < N-1; ++i) {
+        if (p[i] > minAmp && p[i] > p[i-1] && p[i] > p[i+1]) {
+          const T a = p[i-1] - 2*p[i] + p[i+1];
+          const T b = p[i-1] - p[i+1];
+          T delta = T(0);
+          if (std::abs(a) > T(1e-30)) {
+            delta = b / (2*a);
+            delta = std::clamp(delta, T(-0.5), T(0.5));
+          }
+          peaks.push_back( (i + delta) * dt ); // physische Zeit [s]
+        }
+      }
+      return peaks;
+   };
+   
+   const int guard = 5;
+    T estAmp = T(0);
+    for (int i = guard; i < (int)std::min<std::size_t>(p1.size(), guard+50); ++i) {
+      estAmp = std::max(estAmp, std::abs(p1[i]));
+    }
+    const T minAmp = estAmp * T(0.2);
+
+    auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
+    if (peaks1.size() >= 3) {
+      std::vector<T> periods;
+      for (std::size_t i = 0; i+1 < peaks1.size(); ++i) {
+          periods.push_back(peaks1[i+1] - peaks1[i]); // Δt zwischen Peaks
+      }
+  
+      // Mittelwert der Perioden
+      T Tper_num = T(0);
+      for (auto T_i : periods) Tper_num += T_i;
+      Tper_num /= (T)periods.size();
+  
+      const T omega_num = T(2)*std::numbers::pi_v<T> / Tper_num; // [1/s]
+      // schon in main berechnet:
+      const T k_phys = 2.*std::numbers::pi_v<T> / lambda_phys;
+      const T k_LU   = k_phys * converter.getPhysDeltaX();
+     // const T cs_LU  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+
+          // cp in physikalischen Einheiten:
+    const T cp_phys = omega_num / k_phys; // [m/s]
+
+    // nach LU:
+    const T cp_LU   = cp_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    const T cp_over_cs = cp_LU / cs_LU;
+
+    if (singleton::mpi().getRank()==0) {
+      CSV<T> csvFreq("cp_from_frequency", ';',
+          {"dumb","k_LU","k2_LU","cp_phys","cp_LU","cp_over_cs",
+           "cp_LU_analytic","cp_over_cs_analytic"},
+          ".csv");
+
+      csvFreq.writeDataFile(0, {
+          k_LU,
+          k_LU*k_LU,
+          cp_phys,
+          cp_LU,
+          cp_over_cs,
+          cp_LU_analytic,
+          cp_LU_over_cs_LU_analytic
+      });
+
+      std::cout << "[cp|FREQ] Tper_num="<<Tper_num<<" s, omega_num="<<omega_num
+                <<" rad/s -> c_p="<<cp_phys<<" m/s, c_p/c_s="<<cp_over_cs<<"\n";
+  }
+      } else {
+        if (singleton::mpi().getRank()==0) {
+            std::cout << "[cp|FREQ] Zu wenige Peaks gefunden: "<<peaks1.size()<<"\n";
+        }
+}
+
+
+
     timer.stop();
     timer.printSummary();
   }
