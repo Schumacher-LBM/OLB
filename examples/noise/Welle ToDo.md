@@ -6,6 +6,11 @@ OK (nicht machen )1. point source as InterpolatedPressure BC
 OK 2. richtige IndicatorSphere
 OK 3. Material 4 außen (check innerExtend und innerOrigin) --> in geometry.pvd nachgucken
 OK 4. outdir naming
+5. Domäne so anpassen, dass 5 volle Perioden durchlaufen können
+6. Messpunkte ueberprüfen
+7. pythonskript für Messung testen
+8. Messmethode hinterfragen
+
 
 5. minimal kleinere Auflösung
 OK (Hier nochmal nachschauen wie groß genau) 6. domäne ausdehnung alle Raumrichtungen ca. 3x lambda - falls zu langsam, erstmal 2xlambda
@@ -19,10 +24,10 @@ OK 8aa. Logdatei schreiben, damit der Terminalinhalt mit ausgegeben wird
 OK 8a. periodische Randbedingungen der freien Welle überprüfen und zusehen, dass die Domäne so lang ist, dass die Wellen komplett abschließen
 OK 8. Gitterpunkte je Wellenzahl in die Ausgabe einfügen
 OK 9. Viskosität neu ansetzen
-10. cp analytisch sauber in das Programm programmieren, damit du weißt, ob die Werte richtig sind!
-11. Überall bei den _lat Ausgaben _LU draus machen
-12. gp/lamda verändert sich momentan. LDomäne und alls bleibt exakt gleich. Soll das so sein?
-
+OK 10. cp analytisch sauber in das Programm programmieren, damit du weißt, ob die Werte richtig sind!
+OK 11. Überall bei den _lat Ausgaben _LU draus machen
+12. gp/lamda verändert sich momentan. LDomäne und alls bleibt exakt gleich. Soll das so sein? <--- Schonprobiert aber Falsch nochmal neu machen!!! Ein altes skript liegt unter den alten Messwerten in dem letzten Ordner mit den nWaves log datein
+13. Simulation durchführen mit erhöhter Resolution! 
 
 
 Erzwungene Welle
@@ -32,3 +37,8 @@ OK9. Viskosität neu ansetzen
 9. Messpunkte nicht in Abhängigkeit von lambda. Diagonal auf die Achse zusätzlich setzen. Weiter weg setzen
 10. Welle mit einer ramp funktion anlaufen lassen
 11. Diagonalen Messpunkt überprüfen und auf das gleiche delta setzen, wie den X Punkt. Wenn sich hier unterschiede auftun in der Messung bei längerem Abstand, stimmt die Messung nicht!
+
+ToDo
+## Latex-Dokument
+1. Alle Formeln gegenprüfen und korrigieren
+2. Alle Bilder gegenprüfen und korrigieren!

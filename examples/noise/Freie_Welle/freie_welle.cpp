@@ -281,7 +281,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
     const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
     // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
     
-    const int Nx                = 80.; //nWaves*lambda_LU; 
+    const int Nx                = 50.; //nWaves*lambda_LU; 
     const T physLength         = 1.;       // length of the cuboid [m]
     const T physDeltaX          =physLength/Nx; 
     const T lambda_LU = lambda_phys/physDeltaX;
@@ -378,7 +378,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    
    std::array<Vector<T,ndim>,2> measurePhysR = {
      Vector<T,ndim>{domainlenth-0.4, physwidth/2., physspan/2.},
-     Vector<T,ndim>{domainlenth-0.3, physwidth/2., physspan/2.}
+     Vector<T,ndim>{domainlenth-0.35, physwidth/2., physspan/2.}
    };
    std::array<Vector<int,4>,2> measureLatticeR{};
 
@@ -511,7 +511,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
      //           << T{globalMeasurements[0]}<< std::endl;
  
          
-     //if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
+     if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
  
  
      //===Zwischenschritt Amplitudenverlauf=====
@@ -562,7 +562,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  };
  
  // --- Parameter für die Peak-Suche
- const int guard = 5; // ein paar erste Samples ignorieren
+ const int guard = 1; // ein paar erste Samples ignorieren
  T estAmp = T(0);
  for (int i = guard; i < (int)std::min<std::size_t>(p1.size(), guard+50); ++i) {
    estAmp = std::max(estAmp, std::abs(p1[i]));

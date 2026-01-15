@@ -1,0 +1,83 @@
+[ThreadPool] Sucessfully initialized, numThreads=1
+[Directories] Directory testdescodestmp_reporter/ created.
+[Directories] Directory testdescodestmp_reporter/imageData/ created.
+[Directories] Directory testdescodestmp_reporter/imageData/data/ created.
+[Directories] Directory testdescodestmp_reporter/vtkData/ created.
+[Directories] Directory testdescodestmp_reporter/vtkData/data/ created.
+[Directories] Directory testdescodestmp_reporter/gnuplotData/ created.
+[Directories] Directory testdescodestmp_reporter/gnuplotData/data/ created.
+[Directories] Directory testdescodestmp_reporter/introspectionData/ created.
+[UnitConverter] ----------------- UnitConverter information -----------------
+[UnitConverter] -- Parameters:
+[UnitConverter] Resolution:                       N=              26
+[UnitConverter] Lattice velocity:                 latticeU=       0.0205592
+[UnitConverter] Lattice relaxation frequency:     omega=          1.90714
+[UnitConverter] Lattice relaxation time:          tau=            0.524346
+[UnitConverter] Characteristical length(m):       charL=          1
+[UnitConverter] Characteristical speed(m/s):      charU=          1
+[UnitConverter] Phys. kinematic viscosity(m^2/s): charNu=         0.015
+[UnitConverter] Phys. density(kg/m^d):            charRho=        1
+[UnitConverter] Characteristical pressure(N/m^2): charPressure=   0
+[UnitConverter] Mach number:                      machNumber=     0.0356096
+[UnitConverter] Reynolds number:                  reynoldsNumber= 66.6667
+[UnitConverter] Knudsen number:                   knudsenNumber=  0.000534144
+[UnitConverter] Characteristical CFL number:      charCFLnumber=  0.0205592
+[UnitConverter] 
+[UnitConverter] -- Conversion factors:
+[UnitConverter] Voxel length(m):                  physDeltaX=     0.038
+[UnitConverter] Time step(s):                     physDeltaT=     0.00078125
+[UnitConverter] Velocity factor(m/s):             physVelocity=   48.64
+[UnitConverter] Density factor(kg/m^3):           physDensity=    1
+[UnitConverter] Mass factor(kg):                  physMass=       5.4872e-05
+[UnitConverter] Viscosity factor(m^2/s):          physViscosity=  1.84832
+[UnitConverter] Force factor(N):                  physForce=      3.41629
+[UnitConverter] Pressure factor(N/m^2):           physPressure=   2365.85
+[UnitConverter] -------------------------------------------------------------
+[prepareGeometry] 
+[prepareGeometry] Prepare Geometry ...
+dx: 0.038[SuperGeometryStatistics3D] materialNumber=1; count=592677; minPhysR=(-1.596,-1.596,-1.596); maxPhysR=(1.558,1.558,1.558)
+[SuperGeometryStatistics3D] materialNumber=3; count=27; minPhysR=(-0.038,-0.038,-0.038); maxPhysR=(0.038,0.038,0.038)
+[SuperGeometryStatistics3D] materialNumber=4; count=437597; minPhysR=(-1.9,-1.9,-1.9); maxPhysR=(1.9,1.9,1.9)
+[SuperGeometryStatistics3D] countTotal[1e6]=1.0303
+[prepareLattice] 
+[prepareLattice] Prepare Lattice ...
+[prepareLattice] Prepare Lattice ... OK
+[main] Timing setup:
+[main] iTmax=150; maxPhysT=0.117188; dt=0.00078125
+[main] iTout=0; tout=0; iTvtk=1; iTplot=1
+[main] Gitterpunkte pro Wellenlänge (aus Converter): 10
+[main] physViscosity: 0.015
+Warning: empty y range [0:0], adjusting to [-1:1]
+[Timer] step=0; percent=0; passedTime=21.717; remTime=3235.83; MLUPs=0
+[Timer] step=7; percent=4.66667; passedTime=96.541; remTime=1972.19; MLUPs=0.0963876
+[Timer] step=14; percent=9.33333; passedTime=170.948; remTime=1660.64; MLUPs=0.0969278
+[Timer] step=21; percent=14; passedTime=245.917; remTime=1510.63; MLUPs=0.0961999
+[Timer] step=28; percent=18.6667; passedTime=321.305; remTime=1399.97; MLUPs=0.0956665
+[Timer] step=35; percent=23.3333; passedTime=397.552; remTime=1306.24; MLUPs=0.0945887
+[Timer] step=42; percent=28; passedTime=475.375; remTime=1222.39; MLUPs=0.0926732
+[Timer] step=49; percent=32.6667; passedTime=555.362; remTime=1144.73; MLUPs=0.090166
+[Timer] step=56; percent=37.3333; passedTime=636.714; remTime=1068.77; MLUPs=0.0886531
+[Timer] step=63; percent=42; passedTime=718.915; remTime=992.787; MLUPs=0.0877375
+[Timer] step=70; percent=46.6667; passedTime=801.232; remTime=915.694; MLUPs=0.0876138
+[Timer] step=77; percent=51.3333; passedTime=883.361; remTime=837.472; MLUPs=0.0878154
+[Timer] step=84; percent=56; passedTime=965.363; remTime=758.5; MLUPs=0.0879515
+[Timer] step=91; percent=60.6667; passedTime=1047.12; remTime=678.899; MLUPs=0.0882172
+[Timer] step=98; percent=65.3333; passedTime=1129.45; remTime=599.298; MLUPs=0.0875989
+[Timer] step=105; percent=70; passedTime=1211.95; remTime=519.405; MLUPs=0.0874205
+[Timer] step=112; percent=74.6667; passedTime=1294.82; remTime=439.314; MLUPs=0.087025
+[Timer] step=119; percent=79.3333; passedTime=1378.25; remTime=359.039; MLUPs=0.0864471
+[Timer] step=126; percent=84; passedTime=1461.85; remTime=278.448; MLUPs=0.0862682
+[Timer] step=133; percent=88.6667; passedTime=1545.78; remTime=197.581; MLUPs=0.085927
+[Timer] step=140; percent=93.3333; passedTime=1629.26; remTime=116.376; MLUPs=0.0863932
+[Timer] step=147; percent=98; passedTime=1713.08; remTime=34.9607; MLUPs=0.086049
+[cp|PEAK#1 X-Achse] t1=0.0369471 s, t2=0.0410743 s -> c_p=23.0185 m/s | c_p_lat=0.473242 | c_p/c_s=0.819679
+[cp|PEAK#1 Diagonale] t3=0.067518 s, t4=0.0746164 s -> c_p=23.1803 m/s | c_p_lat=0.476569 | c_p/c_s=0.825443
+[cp|XCORR] dx=0.095 m, lag=5 Samples, dt=0.00390625 s -> c_p=24.32 m/s
+[cp|PHASE] dphi=-1.90499 rad, omega=464.333 rad/s -> c_p=23.1558 m/s
+[Timer] 
+[Timer] ----------------Summary:Timer----------------
+[Timer] measured time (rt) : 1736.964s
+[Timer] measured time (cpu): 2302.542s
+[Timer] average MLUPs :       0.087
+[Timer] average MLUPps:       0.087
+[Timer] ---------------------------------------------
