@@ -34,7 +34,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
  const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
     // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
-    const int lambda_LU        = 20.;     //Die Wellenlänge soll auf 10 LU abgebildet werden
+    //const int lambda_LU        = 20.;     //Die Wellenlänge soll auf 10 LU abgebildet werden
     const int nWaves            = 3.5;               // In der Domäne sollen 6 Wellen abgebildet werden
     const T physLength          = 1.;       // length of the cuboid [m]
     const T physspan           = 0.46;
@@ -281,10 +281,10 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
     const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
     // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
     
-    const int Nx                = 50.; //nWaves*lambda_LU; 
+    const int Nx                = 80.; //nWaves*lambda_LU; 
     const T physLength         = 1.;       // length of the cuboid [m]
     const T physDeltaX          =physLength/Nx; 
-    const T lambda_LU = lambda_phys/physDeltaX;
+    const T lambda_LU =          lambda_phys/physDeltaX;
     const T domainlenth        =physLength*lambda_phys*T(5.);
 
  
@@ -377,8 +377,8 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    // --- Zwei Messpunkte in physikalischen Koordinaten (m)
    
    std::array<Vector<T,ndim>,2> measurePhysR = {
-     Vector<T,ndim>{domainlenth-0.4, physwidth/2., physspan/2.},
-     Vector<T,ndim>{domainlenth-0.35, physwidth/2., physspan/2.}
+     Vector<T,ndim>{domainlenth*0.6, physwidth/2., physspan/2.},
+     Vector<T,ndim>{domainlenth*0.6+lambda_LU/2., physwidth/2., physspan/2.}
    };
    std::array<Vector<int,4>,2> measureLatticeR{};
 
@@ -573,6 +573,9 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
  auto peaks2 = findPeakTimes(p2, dtPhys, guard, minAmp);
  
+ 
+
+
  // --- gewünschten Peak wählen (1=erster, 2=zweiter, ...)
  //     (CLI: --peakN 2 für zweiten Wellenberg)
  const int n = std::max(1, peakN);
