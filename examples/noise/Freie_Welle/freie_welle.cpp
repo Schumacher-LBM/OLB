@@ -3,6 +3,7 @@ Das Programm kompiliert Fehlerfrei und kann durchgeführt werden.
 Bei dem ausführen des Programms muss mit --iTmax XXX eine Zahl angegeben werden, wieviele Iterationsdurchläufe das Programm durchläuft
 Terminalbefehl: make clean; make; ./Freie_Welle&>log.txt --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
 make; lam=1; RNAME="test_lam${lam}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --lambda $lam --peakN 2 --outdir $RNAME^
+make; lam=1;Nx=80; RNAME="Auswertung_Aufloesung_lam${lam}_Res${Nx}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --lambda $lam --peakN 2 --outdir $RNAME^ --Nx Nx
 
 To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen finden. Außerdem die Größe des Mediums angeben. Messwerte nehmen
 /*  Lattice Boltzmann sample, written in C++, using the OpenLB
@@ -276,15 +277,15 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    singleton::directories().setOutputDir(outdir);
    // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
    int peakN = args.getValueOrFallback("--peakN", 1);
+   int nPeaksAvg = args.getValueOrFallback("--nPeaksAvg", 10);
    T lambda_phys=args.getValueOrFallback("--lambda",0.6);
    T nPer = args.getValueOrFallback("--nPer",40.);
     const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
     // T lambda_phys              = T(0.6);  // gewünschte Wellenlänge in m
-    
-    const int Nx                = 80.; //nWaves*lambda_LU; 
+    T Nx = args.getValueOrFallback("--Nx",80.);
     const T physLength         = 1.;       // length of the cuboid [m]
     const T physDeltaX          =physLength/Nx; 
-    const T lambda_LU =          lambda_phys/physDeltaX;
+    const T lambda_LU           =lambda_phys/physDeltaX;
     const T domainlenth        =physLength*lambda_phys*T(5.);
 
  
@@ -377,8 +378,8 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    // --- Zwei Messpunkte in physikalischen Koordinaten (m)
    
    std::array<Vector<T,ndim>,2> measurePhysR = {
-     Vector<T,ndim>{domainlenth*0.6, physwidth/2., physspan/2.},
-     Vector<T,ndim>{domainlenth*0.6+lambda_LU/2., physwidth/2., physspan/2.}
+     Vector<T,ndim>{domainlenth * T(0.5), physwidth/2., physspan/2.},
+     Vector<T,ndim>{domainlenth * T(0.5) + lambda_phys/T(2), physwidth/2., physspan/2.}
    };
    std::array<Vector<int,4>,2> measureLatticeR{};
 
@@ -424,7 +425,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  
    const T dtPhys = converter.getPhysDeltaT();
    // oben sicherstellen: #include <cmath>
-   const T dx = std::sqrt(
+   const T Measure_dx = std::sqrt(
      (measurePhysR[1][0] - measurePhysR[0][0]) * (measurePhysR[1][0] - measurePhysR[0][0]) +
      (measurePhysR[1][1] - measurePhysR[0][1]) * (measurePhysR[1][1] - measurePhysR[0][1]) +
      (measurePhysR[1][2] - measurePhysR[0][2]) * (measurePhysR[1][2] - measurePhysR[0][2])
@@ -573,7 +574,29 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
  auto peaks2 = findPeakTimes(p2, dtPhys, guard, minAmp);
  
- 
+//  auto estimateOmegaFromPeaks = [&](const std::vector<T>& peakTimes, int skipFirstPeaks)->T {
+//   const int M = (int)peakTimes.size();
+//   if (M < skipFirstPeaks + 3) return T(0);
+
+//   // Mittelwert der Perioden aus Peak-Abständen
+//   T sumT = 0;
+//   int cnt = 0;
+//   for (int i = skipFirstPeaks+1; i < M; ++i) {
+//     const T Ti = peakTimes[i] - peakTimes[i-1];
+//     if (Ti > T(0)) { sumT += Ti; ++cnt; }
+//   }
+//   if (cnt == 0) return T(0);
+
+//   const T Tper = sumT / cnt;
+//   return T(2)*std::numbers::pi_v<T> / Tper; // omega [rad/s]
+// };
+
+// const int skip = 1; // z.B. 1-2 Peaks als Einschwingphase ignorieren
+// T omegaPhys_meas = estimateOmegaFromPeaks(peaks1, skip);
+
+// // Fallback, falls Peak-Methode versagt
+// if (!(omegaPhys_meas > T(0))) omegaPhys_meas = omegaPhys;  // dein altes omegaPhys
+
 
 
  // --- gewünschten Peak wählen (1=erster, 2=zweiter, ...)
@@ -584,7 +607,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    const T t2 = peaks2[n-1];
  
    if (t2 != t1 && std::isfinite(t1) && std::isfinite(t2)) {
-     const T cp_peak_phys = dx / std::abs(t2 - t1); // [m/s]
+     const T cp_peak_phys = Measure_dx / std::abs(t2 - t1); // [m/s]
      const T cp_peak_LU  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
      const T cs_LU_here  = T(1.)/sqrt(T(3.));   //std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
      const T ratio        = cp_peak_LU / cs_LU_here;
@@ -642,7 +665,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
        const int N = (int)std::min(a.size(), b.size());
        if (N<=3) return 0;
        // maximaler Lag heuristisch begrenzen
-       const int maxLag = std::min( (int)std::round(0.5 * dx / std::max(dtPhys, T(1e-12))), N-1 );
+       const int maxLag = std::min( (int)std::round(0.5 * Measure_dx / std::max(dtPhys, T(1e-12))), N-1 );
  
        // Mittelwerte entfernen
        T ma=0, mb=0; 
@@ -670,10 +693,10 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  
      int lag = xcorrLag(p1,p2);
      T dt = lag * dtPhys;
-     T cp_xcorr = dx / std::max(std::abs(dt), T(1e-12));
+     T cp_xcorr = Measure_dx / std::max(std::abs(dt), T(1e-12));
  
      if (singleton::mpi().getRank()==0) {
-       std::cout << "[cp|XCORR] dx="<<dx<<" m, lag="<<lag<<" Samples, dt="<<dt
+       std::cout << "[cp|XCORR] dx="<<Measure_dx<<" m, lag="<<lag<<" Samples, dt="<<dt
                  <<" s -> c_p="<<cp_xcorr<<" m/s\n";
      }
  
@@ -698,7 +721,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
        while (dphi >  M_PI) dphi -= 2*M_PI;
        while (dphi < -M_PI) dphi += 2*M_PI;
  
-       const T cp_phase = std::abs(omegaPhys * dx / std::max(std::abs(dphi), T(1e-12)));
+       const T cp_phase = std::abs(omegaPhys * Measure_dx / std::max(std::abs(dphi), T(1e-12)));
  
        if (singleton::mpi().getRank()==0) {
          std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys
