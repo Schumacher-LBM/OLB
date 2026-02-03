@@ -1,8 +1,7 @@
   /*Notiz: FREIE WELLE
 Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. 
 Bei dem ausführen des Programms muss mit --iTmax XXX eine Zahl angegeben werden, wieviele Iterationsdurchläufe das Programm durchläuft
-Terminalbefehl: make clean; make; ./Freie_Welle&>log.txt --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
-make; lam=1; RNAME="test_lam${lam}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --lambda $lam --peakN 2 --outdir $RNAME^
+Terminalbefehl: make clean; 
 make; lam=1;Nx=80; RNAME="Auswertung_Aufloesung_lam${lam}_Res${Nx}"; ./Freie_Welle&>${RNAME}.log --iTmax 150 --lambda $lam --peakN 2 --outdir $RNAME^ --Nx Nx
 
 To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen finden. Außerdem die Größe des Mediums angeben. Messwerte nehmen
@@ -45,7 +44,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
     const T physDensity       = 1.;         // fluid density of air (20°C)[kg/(m*m*m)]
     const T physMaxT          = 0.5;        // maximal simulation time [s]
     const T physDeltaT        = 0.00078125;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
-
+      
  typedef enum { periodic, local } BoundaryType;
  
  struct PressureO {
@@ -381,36 +380,57 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
      Vector<T,ndim>{domainlenth * T(0.5), physwidth/2., physspan/2.},
      Vector<T,ndim>{domainlenth * T(0.5) + lambda_phys/T(2), physwidth/2., physspan/2.}
    };
-   std::array<Vector<int,4>,2> measureLatticeR{};
+   std::array<Vector<int,4>,2> latticeR{};
+   std::array<int,2> watchCellId{};
 
- 
-   SuperD<T,descriptors::D3<fields::PHYS_R,descriptors::SCALAR>> watchpointsD(loadBalancer);
-    // --- Gitterpunkte pro Wellenlänge ausgeben ---
+   SuperD<T,descriptors::D3<fields::PHYS_R,fields::SCALAR>> watchpointsD(loadBalancer);
+
+
+   // --- Gitterpunkte pro Wellenlänge ausgeben ---
     const T cellsPerLambda = lambda_phys / physDeltaX;
     clout << "Gitterpunkte pro Wellenlänge: " << cellsPerLambda << std::endl;
     const T cellsPerLambdaConverter = lambda_phys / converter.getPhysDeltaX();
     clout << "Gitterpunkte pro Wellenlänge (aus Converter): " 
         << cellsPerLambdaConverter << std::endl;
     clout << "physViscosity: "<<physViscosity<< std::endl;
-   for (int k=0; k<2; ++k) {
-     if (auto latticeR = cuboidDecomposition.getLatticeR(measurePhysR[k])) {
-       measureLatticeR[k] = *latticeR;
- 
-       if (loadBalancer.isLocal(measureLatticeR[k][0])) {
-         auto& blockD = watchpointsD.getBlock(measureLatticeR[k][0]);
-         // Platz schaffen: 1 Zelle je Watchpoint am Blockende
-         blockD.resize({blockD.getNx()+1,1,1});
-         auto watchpoint = blockD.get(blockD.getNcells()-1);
-         watchpoint.template setField<fields::PHYS_R>(measurePhysR[k]);
- 
-         // Lokalen Zellenindex merken (wir nutzen measureLatticeR[k][1] dafür)
-         measureLatticeR[k][1] = blockD.getNcells()-1;
-       }
-     } else if (singleton::mpi().getRank()==0) {
-       std::cout << "[WARNUNG] Messpunkt " << k << " wurde NICHT lokal gefunden!\n";
-     }
-   }
- 
+    for (int k=0; k<2; ++k) {
+      if (auto lr = cuboidDecomposition.getLatticeR(measurePhysR[k])) {
+        latticeR[k] = *lr;
+    
+        if (loadBalancer.isLocal(latticeR[k][0])) {
+          auto& blockD = watchpointsD.getBlock(latticeR[k][0]);
+    
+          blockD.resize({blockD.getNx()+1,1,1});
+          watchCellId[k] = blockD.getNcells()-1;
+    
+          auto watchpoint = blockD.get(watchCellId[k]);
+          watchpoint.setField<fields::PHYS_R>(measurePhysR[k]);
+
+        }
+      } else if (singleton::mpi().getRank()==0) {
+        std::cout << "[WARNUNG] Messpunkt " << k << " wurde NICHT gefunden!\n";
+      }
+    }
+    
+    const T dx = converter.getPhysDeltaX();
+    const int dIx = latticeR[1][1] - latticeR[0][1];
+    const int dIy = latticeR[1][2] - latticeR[0][2];
+    const int dIz = latticeR[1][3] - latticeR[0][3];
+    
+    const T Measure_dx_eff = std::sqrt(
+      (dIx*dx)*(dIx*dx) + (dIy*dx)*(dIy*dx) + (dIz*dx)*(dIz*dx)
+    );
+    
+    const T Measure_dx_nominal = std::sqrt(
+      (measurePhysR[1][0]-measurePhysR[0][0])*(measurePhysR[1][0]-measurePhysR[0][0]) +
+      (measurePhysR[1][1]-measurePhysR[0][1])*(measurePhysR[1][1]-measurePhysR[0][1]) +
+      (measurePhysR[1][2]-measurePhysR[0][2])*(measurePhysR[1][2]-measurePhysR[0][2])
+    );
+    
+    clout << "Measure_dx nominal = " << Measure_dx_nominal << " m\n";
+    clout << "Measure_dx eff     = " << Measure_dx_eff     << " m\n";
+    clout << "dI = (" << dIx << "," << dIy << "," << dIz << ")\n";
+    
    watchpointsD.setProcessingContext(ProcessingContext::Simulation);
  
    // Kopplung: schreibt den berechneten Druck in die Watchpoints
@@ -424,24 +444,15 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    p2.reserve(iTmax);
  
    const T dtPhys = converter.getPhysDeltaT();
-   // oben sicherstellen: #include <cmath>
-   const T Measure_dx = std::sqrt(
-     (measurePhysR[1][0] - measurePhysR[0][0]) * (measurePhysR[1][0] - measurePhysR[0][0]) +
-     (measurePhysR[1][1] - measurePhysR[0][1]) * (measurePhysR[1][1] - measurePhysR[0][1]) +
-     (measurePhysR[1][2] - measurePhysR[0][2]) * (measurePhysR[1][2] - measurePhysR[0][2])
-   );
- 
- 
+  
+   
    // Für die optionale Phasenmethode: physikalische Kreisfrequenz der Anregung bestimmen
     T omegaPerStep =  cs_LU*k_LU;
    
    const T omegaPhys = omegaPerStep / dtPhys;
  
    CSV<T> csvWriter("Welle", ';', {"iT", "t", "p1", "p2"}, ".csv");
-   CSV<T> csvSummary("cp_vs_k", ';',
-     {"dumb","k_LU", "k2_LU", "cp_LU_xcorr", "cp_LU_phase", "cs_LU","cp_over_cs_corr","cs_ana", "cp_over_cs_ana"},
-     ".csv");
- 
+  
    // Messung Plot Amplitudenverlauf
    // --- Druck-Functor einmal definieren ---
    SuperLatticePhysPressure3D<T, DESCRIPTOR> pressureF(sLattice, converter);
@@ -483,11 +494,11 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
      // lokale Messwerte sammeln
      std::vector<T> localP(2, T(0)), globalP(2, T(0));
      for (int k=0; k<2; ++k) {
-       if (loadBalancer.isLocal(measureLatticeR[k][0])) {
-         auto& blk = watchpointsD.getBlock(loadBalancer.loc(measureLatticeR[k][0]));
-         auto cell = blk.get(measureLatticeR[k][1]);
-         const T pu = cell.template getField<descriptors::SCALAR>(); // Lattice-Druck (PU)
-         localP[k] += converter.getPhysPressure(pu);                 // in phys. Druck [Pa]
+      if (loadBalancer.isLocal(latticeR[k][0])) {
+        auto& blk = watchpointsD.getBlock(loadBalancer.loc(latticeR[k][0]));
+        auto cell = blk.get(watchCellId[k]);
+        const T pu = cell.template getField<fields::SCALAR>();
+        localP[k] += converter.getPhysPressure(pu);                 // in phys. Druck [Pa]
        }
      }
  
@@ -574,30 +585,83 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
  auto peaks2 = findPeakTimes(p2, dtPhys, guard, minAmp);
  
-//  auto estimateOmegaFromPeaks = [&](const std::vector<T>& peakTimes, int skipFirstPeaks)->T {
-//   const int M = (int)peakTimes.size();
-//   if (M < skipFirstPeaks + 3) return T(0);
+// --- Mittelung über mehrere Peaks ab peakN
+const int startPeak = std::max(1, peakN);         // 1-basiert aus CLI
+const int Nwin      = nPeaksAvg;                   
+const int i0        = startPeak - 1;              // 0-basierter Index
+const int i1_excl   = i0 + Nwin;                  // exklusives Ende
 
-//   // Mittelwert der Perioden aus Peak-Abständen
-//   T sumT = 0;
-//   int cnt = 0;
-//   for (int i = skipFirstPeaks+1; i < M; ++i) {
-//     const T Ti = peakTimes[i] - peakTimes[i-1];
-//     if (Ti > T(0)) { sumT += Ti; ++cnt; }
-//   }
-//   if (cnt == 0) return T(0);
+const int nAvail = (int)std::min(peaks1.size(), peaks2.size());
 
-//   const T Tper = sumT / cnt;
-//   return T(2)*std::numbers::pi_v<T> / Tper; // omega [rad/s]
-// };
+if (nAvail >= i1_excl) {
+  std::vector<T> cp_phys_list;
+  cp_phys_list.reserve(Nwin);
 
-// const int skip = 1; // z.B. 1-2 Peaks als Einschwingphase ignorieren
-// T omegaPhys_meas = estimateOmegaFromPeaks(peaks1, skip);
+  for (int i = i0; i < i1_excl; ++i) {
+    const T dt_i = peaks2[i] - peaks1[i];                 // [s]
+    if (!std::isfinite(dt_i) || std::abs(dt_i) < T(1e-12)) continue;
 
-// // Fallback, falls Peak-Methode versagt
-// if (!(omegaPhys_meas > T(0))) omegaPhys_meas = omegaPhys;  // dein altes omegaPhys
+    const T cp_i = Measure_dx_eff / std::abs(dt_i);           // [m/s]
+    if (std::isfinite(cp_i) && cp_i > T(0)) {
+      cp_phys_list.push_back(cp_i);
+    }
+  }
 
+  if ((int)cp_phys_list.size() >= 3) {
+    // Mittelwert
+    T mean = 0;
+    for (auto v : cp_phys_list) mean += v;
+    mean /= (T)cp_phys_list.size();
 
+    // Standardabweichung (Stichprobe)
+    T var = 0;
+    for (auto v : cp_phys_list) var += (v - mean) * (v - mean);
+    var /= (T)(cp_phys_list.size() - 1);
+    const T stddev = std::sqrt(std::max(var, T(0)));
+
+    // Umrechnung nach LU und Verhältnis zu cs
+    const T cp_mean_LU = mean * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    const T cp_std_LU  = stddev * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    const T cs_LU_here = T(1.) / std::sqrt(T(3.));
+    const T ratio_mean = cp_mean_LU / cs_LU_here;
+    const T ratio_std  = cp_std_LU  / cs_LU_here;
+
+    if (singleton::mpi().getRank()==0) {
+      std::cout << "[cp|PEAK-AVG] peaks " << startPeak << "..." << (startPeak + Nwin - 1)
+                << " (used=" << cp_phys_list.size() << ") "
+                << " -> c_p=" << mean << " +/- " << stddev << " m/s"
+                << " | c_p_LU=" << cp_mean_LU << " +/- " << cp_std_LU
+                << " | c_p/c_s=" << ratio_mean << " +/- " << ratio_std
+                << "\n";
+    }
+
+    T Average_abweichung=((cp_mean_LU/cs_LU/cp_LU_over_cs_LU_analytic)-T(1.))*T(100.);
+    CSV<T> csvPeakAvg("cp_peak_avg", ';',
+      {"dumb","k_LU","k2_LU","startPeak","nPeaksWin","nUsed",
+       "dx_m","cp_phys_mean","cp_phys_std","cp_LU_mean","cp_LU_std",
+       "cs_LU","cp_over_cs_mean","cp_over_cs_std",
+       "omega_LU","tvi_LU","cp_over_cs_analytisch","Abweichung in %"},
+      ".csv");
+
+    csvPeakAvg.writeDataFile(0, {k_LU, k2_LU,
+      (T)startPeak, (T)Nwin, (T)cp_phys_list.size(),
+      Measure_dx_eff, mean, stddev, cp_mean_LU, cp_std_LU,
+      cs_LU_here, ratio_mean, ratio_std,
+      omega0, t_vi, cp_LU_over_cs_LU_analytic,Average_abweichung});
+
+  } else {
+    if (singleton::mpi().getRank()==0) {
+      std::cout << "[cp|PEAK-AVG] Zu wenige gueltige dt-Werte im Fenster ("
+                << cp_phys_list.size() << ").\n";
+    }
+  }
+
+} else {
+  if (singleton::mpi().getRank()==0) {
+    std::cout << "[cp|PEAK-AVG] Nicht genug Peaks: verfuegbar=" << nAvail
+              << ", benoetigt bis Peak " << (startPeak + Nwin - 1) << "\n";
+  }
+}
 
  // --- gewünschten Peak wählen (1=erster, 2=zweiter, ...)
  //     (CLI: --peakN 2 für zweiten Wellenberg)
@@ -607,7 +671,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    const T t2 = peaks2[n-1];
  
    if (t2 != t1 && std::isfinite(t1) && std::isfinite(t2)) {
-     const T cp_peak_phys = Measure_dx / std::abs(t2 - t1); // [m/s]
+     const T cp_peak_phys = Measure_dx_eff / std::abs(t2 - t1); // [m/s]
      const T cp_peak_LU  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
      const T cs_LU_here  = T(1.)/sqrt(T(3.));   //std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
      const T ratio        = cp_peak_LU / cs_LU_here;
@@ -618,7 +682,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
                  << " | c_p_LU="<<cp_peak_LU
                  << " | c_p/c_s="<<ratio << "\n";
      }
-     const T Abweichung= (T(1)- ratio/cp_LU_over_cs_LU_analytic)*T(100);
+     const T Abweichung= (ratio/cp_LU_over_cs_LU_analytic-T(1))*T(100);
      // CSV schreiben (eigene Datei oder an deine bestehende anhängen)
    
      CSV<T> csvPeak("cp_peak_n", ';',
@@ -640,12 +704,6 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    }
  }
  
- 
- 
- 
- 
- 
- 
      // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
  
      // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
@@ -665,7 +723,7 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
        const int N = (int)std::min(a.size(), b.size());
        if (N<=3) return 0;
        // maximaler Lag heuristisch begrenzen
-       const int maxLag = std::min( (int)std::round(0.5 * Measure_dx / std::max(dtPhys, T(1e-12))), N-1 );
+       const int maxLag = std::min( (int)std::round(0.5 * Measure_dx_eff / std::max(dtPhys, T(1e-12))), N-1 );
  
        // Mittelwerte entfernen
        T ma=0, mb=0; 
@@ -693,13 +751,13 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  
      int lag = xcorrLag(p1,p2);
      T dt = lag * dtPhys;
-     T cp_xcorr = Measure_dx / std::max(std::abs(dt), T(1e-12));
+     T cp_xcorr = Measure_dx_eff / std::max(std::abs(dt), T(1e-12));
  
      if (singleton::mpi().getRank()==0) {
-       std::cout << "[cp|XCORR] dx="<<Measure_dx<<" m, lag="<<lag<<" Samples, dt="<<dt
+       std::cout << "[cp|XCORR] dx="<<Measure_dx_eff<<" m, lag="<<lag<<" Samples, dt="<<dt
                  <<" s -> c_p="<<cp_xcorr<<" m/s\n";
      }
- 
+     T corr_abweichung=(cp_xcorr/cs_LU/cp_LU_over_cs_LU_analytic-T(1.))*T(100.);
      // -------- Optional: Phasenmethode (benötigt korrekte omegaPhys) ----------------------------------------------------------------------------------------------------------------------------
      auto complexProj = [&](const std::vector<T>& p)->std::pair<T,T>{
        T A=0, B=0; // Re=A, Im=B (mit -sin für Im)
@@ -721,21 +779,30 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
        while (dphi >  M_PI) dphi -= 2*M_PI;
        while (dphi < -M_PI) dphi += 2*M_PI;
  
-       const T cp_phase = std::abs(omegaPhys * Measure_dx / std::max(std::abs(dphi), T(1e-12)));
+       const T cp_phase = std::abs(omegaPhys * Measure_dx_eff / std::max(std::abs(dphi), T(1e-12)));
  
        if (singleton::mpi().getRank()==0) {
          std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys
                    <<" rad/s -> c_p="<<cp_phase<<" m/s\n";
        }
- 
+       
+     
          // Umrechnung nach lattice-Einheiten:
              const T cp_LU_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
              const T cp_LU_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+             T corr_abweichung=(cp_LU_xcorr/cs_LU/cp_LU_over_cs_LU_analytic-T(1.))*T(100.);
+             T phase_abweichung=(cp_LU_phase/cs_LU/cp_LU_over_cs_LU_analytic-T(1.))*T(100.);
              const T cp_cs_corr  = cp_LU_xcorr/cs_LU;
-             csvSummary.writeDataFile(0, {k_LU, k2_LU, cp_LU_xcorr, cp_LU_phase, cs_LU, cp_cs_corr,cp_LU_analytic,cp_LU_over_cs_LU_analytic});
- 
-     }
-     
+             const T cp_cs_phase  = cp_LU_phase/cs_LU;
+             CSV<T> csvSummary("cp_vs_k", ';',
+              {"dumb","k_LU", "k2_LU", "cp_LU_xcorr","cp/cs xcorr","Abweichung cp/cs xcross", "cp_LU_phase", "cp/cs phase","Abweichung cp/cs phase","cs_LU","cp_over_cs_corr","cs_ana", "cp_over_cs_ana"},
+              ".csv");         
+             csvSummary.writeDataFile(0, {k_LU, k2_LU, cp_LU_xcorr,cp_cs_corr,corr_abweichung, cp_LU_phase,cp_cs_phase,phase_abweichung, cs_LU, cp_cs_corr,cp_LU_analytic,cp_LU_over_cs_LU_analytic});
+      }
+      clout << "Measure_dx (nominal)   = " << Measure_dx << " m\n";
+      clout << "Measure_dx_eff (grid)  = " << Measure_dx_eff << " m\n";
+      clout << "cells distance (x)     = " << std::abs(dIx) << "\n";
+      
      //===Amplitudenverlauf eintragen=======
      // RMS aus Summe der Quadrate
      std::vector<T> p_rms(NxLine);
