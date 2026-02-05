@@ -2,8 +2,8 @@
  * Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. 
  * Bei dem ausführen des Programms muss mit --iTmax XXX eine Zahl angegeben werden, wieviele Iterationsdurchläufe das Programm durchläuft
  * Terminalbefehl: make clean; make; ./erzwungene_welle&>log.txt --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
- * make; lam=1; RNAME="test_lam${lam}"; ./erzwungene_welle&>${RNAME}.log --iTmax 150 --lambda $lam --peakN 2 --outdir $RNAME^
-
+ * make; lam=1; RNAME="test_lam${lam}"; ./erzwungene_welle&>${RNAME}.log --iTmax 150 --peakN 2 --outdir $RNAME^
+ * Lambda muss händisch angepasst werden im Code 
  * To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen finden. Außerdem die Größe des Mediums angeben. Messwerte nehmen
  */
  /*  Lattice Boltzmann sample, written in C++, using the OpenLB
@@ -36,8 +36,8 @@
  using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
  
  const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
- const T lambda_phys       = T(1.);         // Lambda verändern!
- const int lambdaLU      = 10.;            //Wieviele Zellen sollen für eine Wellenlänge genutzt werden
+ const T lambda_phys       = T(0.7854);         // Lambda verändern!
+ //const int lambdaLU      = 10.;            //Wieviele Zellen sollen für eine Wellenlänge genutzt werden
  const int nWaves          = 2.5;
  // const T physDeltaX        = 0.02;     // grid spacing [m]
  const T physLength        = 1.;       // length of the cuboid [m]
@@ -98,23 +98,19 @@
        // --- SPONGE REGION anlegen: äußere Hülle wird Material=4 Sponge Layer fuer den Fall local-----------------
      
        // Dicke der Hülle in Zellen:
-       const int spongeCells = 8;                       // z.B. 8 Zellen
-       const T   dx          = converter.getPhysDeltaX();
-       std::cout << "dx: "<<dx;
-       const T   sx          = spongeCells*dx;
-       const T   sy          = spongeCells*dx;
-       const T   sz          = spongeCells*dx;
- 
-       // Gesamtgröße (m): 2.4 x physwidth x physspan, Ursprung wie oben gewählt
-       const T Lx = Domainelength/physLength, Ly = physwidth/physLength, Lz = physspan/physLength;
- 
-       // INNERER „fluid“-Kern als Cuboid (ohne Sponge-Hülle)
-       Vector<T,3> innerExtend(Lx - 2*sx, Ly - 2*sy, Lz - 2*sz);
-       Vector<T,3> innerOrigin(- (Lx - 2*sx)/2., - (Ly - 2*sy)/2., - (Lz - 2*sz)/2.);
-       clout << "innerExtend=[" << innerExtend[0] << '\n';
-       IndicatorCuboid3D<T> inner(innerExtend/physLength, innerOrigin/physLength);
- 
- 
+       const int SpongeCellsGeometry = spongeCells;                       // z.B. 8 Zellen
+       const T dx = converter.getPhysDeltaX();
+      const T sx = SpongeCellsGeometry * dx;
+
+      const T Lx = Domainelength;
+      const T Ly = physwidth;
+      const T Lz = physspan;
+
+      Vector<T,3> innerExtend(Lx - 2*sx, Ly - 2*sx, Lz - 2*sx);
+      Vector<T,3> innerOrigin(-0.5*(Lx - 2*sx), -0.5*(Ly - 2*sx), -0.5*(Lz - 2*sx));
+
+      IndicatorCuboid3D<T> inner(innerExtend, innerOrigin);
+
        // Im inneren Bereich wieder 4 -> 1 (nur der Kern bleibt "echtes" Fluid)
        superGeometry.rename(2, 1, inner);
        // Alles was nicht 1 war (also noch 2 ist) -> 4 (sollte Hülle sein)
@@ -295,7 +291,7 @@
    outdir += "tmp_reporter/";
    singleton::directories().setOutputDir(outdir);
    size_t iTmax = args.getValueOrFallback("--iTmax", 100); // maximum number of iterations
-   size_t iTvtk = args.getValueOrFallback("--iTvtk", 10); // maximum number of iterations
+   size_t iTvtk = args.getValueOrFallback("--iTvtk", 100); // maximum number of iterations
    T amplitude = args.getValueOrFallback("--a", 2e-3); // maximum number of iterations
    
    const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
@@ -392,15 +388,15 @@
  //#ifdef FEATURE_WATCHPOINTS
  //Messpunkt X-Achse nehmen
    std::array<Vector<T,ndim>,2> measurePhysR = {
-     Vector<T,ndim>{physwidth/4., physwidth/4.,   physspan/4.},
-     Vector<T,ndim>{physwidth/4.+0.1, physwidth/4.+0.1,   physspan/4.+0.1}
+     Vector<T,ndim>{lambda_phys*T(0.75),0., 0.},
+     Vector<T,ndim>{lambda_phys*T(0.75)+lambda_phys/T(2.),0.,0.}
    };
    std::array<Vector<int,4>,2> measureLatticeR{};
  
    // Messpunkt diagonal nehmen:
    std::array<Vector<T,ndim>,2> measurePhysDiagonal = {
-     Vector<T,ndim>{physwidth/4., physwidth/4.,   physspan/4.},
-     Vector<T,ndim>{physwidth/4.+lambda_phys/4., physwidth/4.+lambda_phys/4.,   physspan/4.+lambda_phys/4.}
+     Vector<T,ndim>{lambda_phys * T(0.75) / std::sqrt(T(2)),lambda_phys * T(0.75) / std::sqrt(T(2)), T(0)},
+     Vector<T,ndim>{lambda_phys * T(0.75) / std::sqrt(T(2))+ lambda_phys / (T(2) * std::sqrt(T(2))),lambda_phys * T(0.75) / std::sqrt(T(2))+ lambda_phys / (T(2) * std::sqrt(T(2))),T(0)}
    };
    std::array<Vector<int,4>,2> measureLatticeDiagonal{};
  
@@ -446,7 +442,6 @@
    }
  }
  
-   watchpointsD.setProcessingContext(ProcessingContext::Simulation);
    watchpointsDiagonal.setProcessingContext(ProcessingContext::Simulation);
   
  
@@ -555,11 +550,15 @@
     // #ifdef FEATURE_WATCHPOINTS
      // ------------------------- Messwerte nehmen
      // ------------------------- Messwerte nehmen (2 Sensoren)
-     pressureO.execute();
-     pressureO_diag.execute();
-     watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
-     watchpointsDiagonal.setProcessingContext(ProcessingContext::Evaluation);
- 
+     watchpointsD.setProcessingContext(ProcessingContext::Simulation);
+      watchpointsDiagonal.setProcessingContext(ProcessingContext::Simulation);
+
+      pressureO.execute();
+      pressureO_diag.execute();
+
+      watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
+      watchpointsDiagonal.setProcessingContext(ProcessingContext::Evaluation);
+
      // lokale Messwerte sammeln
      std::vector<T> localP(2, T(0)), globalP(2, T(0));
      for (int k=0; k<2; ++k) {
@@ -771,7 +770,7 @@ if ((int)peaks1.size() >= n && (int)peaks2.size() >= n &&
 
  //#endif
  //#ifdef FEATURE_WATCHPOINTS 
- /*
+ 
      // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
  
      // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
@@ -897,7 +896,7 @@ for (int i=0; i<NxLine; ++i) {
     CSV<T> csvAmpRmsDiag("amplitude_rms_vs_diag", ';', {"x_phys_m", "y_phys_m", "z_phys_m", "p_rms_Pa"}, ".csv");
     for (int i=0; i<NxLine; ++i)
         csvAmpRmsDiag.writeDataFile(i, {x_phys_diag[i], y_phys_diag[i], z_phys_diag[i], p_rms_diag[i]});
-*/
+
  
  
     timer.stop();
