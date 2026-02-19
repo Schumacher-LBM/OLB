@@ -1,11 +1,11 @@
-
 /* Notiz: Erzwungene Welle
  * Das Programm kompiliert Fehlerfrei und kann durchgeführt werden. 
  * Bei dem ausführen des Programms muss mit --iTmax XXX eine Zahl angegeben werden, wieviele Iterationsdurchläufe das Programm durchläuft
- * Terminalbefehl: make clean; make; ./Freie_Welle --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
+ * Terminalbefehl: make clean; make; ./erzwungene_welle&>log.txt --iTmax 150 --peakN 2 (Mit welchem Wellenberg wird die Geschwindigkeit berechnet?) --outdir tmp_periodic_05  --> Zusätzlich kann die Amplitude angegeben werden a--
+ * make; lam=1; RNAME="test_lam${lam}"; ./erzwungene_welle&>${RNAME}.log --iTmax 150 --peakN 2 --outdir $RNAME^
+ * Lambda muss händisch angepasst werden im Code 
  * To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen finden. Außerdem die Größe des Mediums angeben. Messwerte nehmen
- */ //make; lam=1; RNAME="test_lam${lam}"; ./erzwungene_welle&>${RNAME}.log --iTmax 150 --peakN 2 --outdir $RNAME^
-
+ */
  /*  Lattice Boltzmann sample, written in C++, using the OpenLB
  *  library
  *
@@ -36,23 +36,27 @@
  using SpongeDynamics = SpongeLayerDynamics<T, DESCRIPTOR, momenta::BulkTuple, equilibria::SecondOrder>;
  
  const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
- const T lambda_phys = T(0.16);         // Lambda verändern!
- //const T physDeltaX        = 0.1;     // grid spacing [m]
- const T physLength        = T(1.5);       // length of the cuboid [m]
- const T physspan          = T(1.5);
- const T physwidth         = T(1.5);
+ const T lambda_phys       = T(0.2222);         // Lambda verändern!
+ //const int lambdaLU      = 10.;            //Wieviele Zellen sollen für eine Wellenlänge genutzt werden
+ const int nWaves          = 2.5;
+ // const T physDeltaX        = 0.02;     // grid spacing [m]
+ const T physLength        = 1.;       // length of the cuboid [m]
+ const T Domainelength     = 3.5*lambda_phys;
+ const T physspan          = 3.5*lambda_phys;
+ const T physwidth         = 3.5*lambda_phys;
  const T physLidVelocity   = 1.0;      // velocity imposed on lid [m/s] Fuer die Machzahl relevant (Vorher 1.0, jetzt ein zehntel der Schallgeschwindigkeit)
  const T physViscosity     = 1.5e-3;   // kinetic viscosity of fluid [m*m/s] Fuer die Relaxationszeit verantwortlich    
  const T physDensity       = 1.;       // fluid density of air (20°C)[kg/(m*m*m)]
- const T charL   = 1;      // z.B. deine Wellenlänge
- const int res   = 80;               // ~30–40 Zellen pro λ
- const T Ma      = 0.05;             // kleine Machzahl
- const T charV   = 0.003;              // charakteristische phys. Geschwindigkeit (z.B. U' = p'/(rho*c))
- const T rho0    = 1.0;
- const T nu_phys = 1.5e-5;
- const int Nx = physspan*T(100.);
-  const T physDeltaT        = 0.00078125;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
- const T physDeltaX          =physLength/Nx;      
+ const T physMaxT          = 0.5;        // maximal simulation time [s]
+ const T physDeltaT        = 0.00078125;// Messung 1: 0.00078125;//((0.68255-0.5)/3)/physViscosity*physDeltaX*physDeltaX;// 0,68255, weil Tau 0,68255 sein soll. Vorher: physDeltaX/343.46;  // temporal spacing [s] t=physDeltaX/c_s (Vorher 0.00078125, Jetzt: 5,8e-5)
+ const int spongeCells = 8;    //Auch in der Geometry anpassen!
+ // Alte Werte
+ // const T charL   = 1;      // z.B. deine Wellenlänge
+ // const int res   = 90;               // ~30–40 Zellen pro λ
+ // const T Ma      = 0.01;             // kleine Machzahl
+ // const T charV   = 0.003;              // charakteristische phys. Geschwindigkeit (z.B. U' = p'/(rho*c))
+ // const T rho0    = 1.0;
+ // const T nu_phys = 1.5e-5;
  
  
  
@@ -94,23 +98,19 @@
        // --- SPONGE REGION anlegen: äußere Hülle wird Material=4 Sponge Layer fuer den Fall local-----------------
      
        // Dicke der Hülle in Zellen:
-       const int spongeCells = 6;                       // z.B. 8 Zellen
-       const T   dx          = converter.getPhysDeltaX();
-       std::cout << "dx: "<<dx;
-       const T   sx          = spongeCells*dx;
-       const T   sy          = spongeCells*dx;
-       const T   sz          = spongeCells*dx;
- 
-       // Gesamtgröße (m): 2.4 x physwidth x physspan, Ursprung wie oben gewählt
-       const T Lx = 2.4/physLength, Ly = physwidth/physLength, Lz = physspan/physLength;
- 
-       // INNERER „fluid“-Kern als Cuboid (ohne Sponge-Hülle)
-       Vector<T,3> innerExtend(Lx - 2*sx, Ly - 2*sy, Lz - 2*sz);
-       Vector<T,3> innerOrigin(- (Lx - 2*sx)/2., - (Ly - 2*sy)/2., - (Lz - 2*sz)/2.);
-       clout << "innerExtend=[" << innerExtend[0] << '\n';
-       IndicatorCuboid3D<T> inner(innerExtend/physLength, innerOrigin/physLength);
- 
- 
+       const int SpongeCellsGeometry = spongeCells;                       // z.B. 8 Zellen
+       const T dx = converter.getPhysDeltaX();
+      const T sx = SpongeCellsGeometry * dx;
+
+      const T Lx = Domainelength;
+      const T Ly = physwidth;
+      const T Lz = physspan;
+
+      Vector<T,3> innerExtend(Lx - 2*sx, Ly - 2*sx, Lz - 2*sx);
+      Vector<T,3> innerOrigin(-0.5*(Lx - 2*sx), -0.5*(Ly - 2*sx), -0.5*(Lz - 2*sx));
+
+      IndicatorCuboid3D<T> inner(innerExtend, innerOrigin);
+
        // Im inneren Bereich wieder 4 -> 1 (nur der Kern bleibt "echtes" Fluid)
        superGeometry.rename(2, 1, inner);
        // Alles was nicht 1 war (also noch 2 ist) -> 4 (sollte Hülle sein)
@@ -156,9 +156,9 @@
        // (Optional) Sponge-Stärke gleichmäßig setzen (klein anfangen!)
        #ifdef descriptors_SPONGE_STRENGTH_EXISTS
        {
-         const T sigma = 0.2; // 0..1: 0=kein Dämpfen, 1=stark; starte konservativ
+         const T sigma = 0.1; // 0..1: 0=kein Dämpfen, 1=stark; starte konservativ
          AnalyticalConst3D<T,T> sigmaF(sigma);
-         sLattice.defineParameter<descriptors::SPONGE_STRENGTH>(sponge, sigmaF);
+         sLattice.defineParameter<descriptors::DAMPING>(sponge, sigmaF);
        }
        #endif
  
@@ -184,8 +184,8 @@
   
        auto sourceIndicator = superGeometry.getMaterialIndicator({3});
  
-       const T cs_LU = std::sqrt(T(1)/descriptors::invCs2<T,DESCRIPTOR>());
-       const T c_phys = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * cs_LU;
+       const T csLU = std::sqrt(T(1)/descriptors::invCs2<T,DESCRIPTOR>());
+       const T c_phys = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * csLU;
        
  
        T wellenzahl=2. * std::numbers::pi_v<T>/lambda_phys ;//k=2pi/lamda
@@ -269,7 +269,7 @@
       std::stringstream ss;
       ss << std::setw(4) << std::setfill('0') << iT;
       T                          dist        = converter.getPhysDeltaX();
-      T                          ndatapoints = converter.getResolution(); // number of data points on line
+      T                          ndatapoints = converter.getResolution()*Domainelength; //500.; // number of data points on line
       AnalyticalFfromSuperF3D<T> pressure_interpolation(pressure, true, true);
       T                          pmin(converter.getPhysPressure(-amplitude / 20));
       T                          pmax(converter.getPhysPressure(+amplitude / 20));
@@ -291,61 +291,60 @@
    outdir += "tmp_reporter/";
    singleton::directories().setOutputDir(outdir);
    size_t iTmax = args.getValueOrFallback("--iTmax", 100); // maximum number of iterations
-   size_t iTvtk = args.getValueOrFallback("--iTvtk", 100); // maximum number of iterations
-   T amplitude = args.getValueOrFallback("--a", 1e-3); // maximum number of iterations
-  
+   size_t iTvtk = args.getValueOrFallback("--iTvtk", 10); // maximum number of iterations
+   T amplitude = args.getValueOrFallback("--a", 2e-3); // maximum number of iterations
+   
+   const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
+   const T physLength = 1.;      // Referenzlänge, bleibt konstant
+   const int Nx = 100;           // gewünschte Resolution
+   const T physDeltaX = physLength / Nx;   // Δx konstant
+   const T cs_LU = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+   //const T domainlength        =lambdaLU*nWaves; //Nx*physDeltaX*2.; 
+    
+ 
    // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
    int peakN = args.getValueOrFallback("--peakN", 1);
-   int nPeaksAvg = args.getValueOrFallback("--nPeaksAvg", 3);
+ 
    
    OstreamManager clout( std::cout,"main" ); // writing all output first in a userdefined Buffer of type OMBuf. On a flush it spits out at first the userdefined text in squared brackets and afterwards everything from the buffer
  
-   // Provide the unit converter the characteristic entities
-  //  UnitConverterFromResolutionAndLatticeVelocity<T, DESCRIPTOR> converter(
-  //    (size_t)res,             // resolution = Nx auf charL
-  //    Ma/std::sqrt(3.),        // charLatticeVelocity
-  //    charL,                   // charPhysLength
-  //    charV,                   // charPhysVelocity
-  //    nu_phys,                 // physViscosity
-  //    rho0                     // physDensity
-  //    );
-  //    converter.print();
-  const T physDeltaX          =physLength/Nx; 
-
-
-  const UnitConverter<T,DESCRIPTOR> converter (
-    physDeltaX,        // physDeltaX: spacing between two lattice cells in [m]
-    physDeltaT,        // physDeltaT: time step in [s]
-    physLength,        // charPhysLength: reference length of simulation geometry in [m]
-    physLidVelocity,   // charPhysVelocity: highest expected velocity during simulation in [m/s]
-    physViscosity,     // physViscosity: physical kinematic viscosity in [m^2/s]
-    physDensity        // physDensity: physical density [kg/m^3]
-  );
-  converter.print();
+ 
+    // Provide the unit converter the characteristic entities
+    const UnitConverter<T,DESCRIPTOR> converter (
+     physDeltaX,        // physDeltaX: spacing between two lattice cells in [m]
+     physDeltaT,        // physDeltaT: time step in [s]
+     physLength,        // charPhysLength: reference length of simulation geometry in [m]
+     physLidVelocity,   // charPhysVelocity: highest expected velocity during simulation in [m/s]
+     physViscosity,     // physViscosity: physical kinematic viscosity in [m^2/s]
+     physDensity        // physDensity: physical density [kg/m^3]
+   );
+   converter.print();
  
    // --- Wellenzahl in physikalischen und lattice Einheiten ---
    // Nutze dieselbe λ bzw. wellenzahl wie in setBoundaryValues (hier: λ_phys = 0.5 m)
    
-             
+   const T lambda_LU = lambda_phys/physDeltaX;
    const T k_phys = 2.*std::numbers::pi_v<T> / lambda_phys;         // [rad/m]
-   const T k_LU  = k_phys * converter.getPhysDeltaX(); // [rad per lattice cell]
-   const T k2_LU = k_LU * k_LU;
-   const T cs_LU  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
-   const T c_phys  = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * cs_LU;
+   const T kLU  = k_phys * converter.getPhysDeltaX(); // [rad per lattice cell]
+   const T k2LU = kLU * kLU;
+   const T csLU  = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+   const T c_phys  = (converter.getPhysDeltaX()/converter.getPhysDeltaT()) * csLU;
    const T omegaPhys = c_phys * k_phys;   // EINDEUTIGE physikalische Frequenz
    
  
    // === 2nd Step: Prepare Geometry ===
-   Vector<T,ndim> originFluid(-physLength/2., -physLength/2., -physLength/2.);
-   Vector<T,ndim> extendFluid(physLength, physLength, physLength);
-   IndicatorCuboid3D<T> domainFluid(extendFluid, originFluid);
+   Vector<T,ndim> extentFluid(Domainelength/physLength, physwidth/physLength, physspan/physLength);
+   for ( size_t d=0; d<ndim; d++ ) extentFluid[d] += T(2)*converter.getPhysLength(spongeCells);
+   Vector<T,ndim> originFluid;
+   for ( size_t d=0; d<ndim; d++ ) originFluid[d] = -T(0.5)*extentFluid[d];//(-Domainelength/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.);
+   IndicatorCuboid3D<T> domainFluid(extentFluid, originFluid);
    // -----------Variabeln definiere Messungen
    size_t nplot                  = args.getValueOrFallback( "--nplot",             100 );  
    size_t iTout                  = args.getValueOrFallback( "--iTout",             0   );  
      
    //----------------------------- Geometrie aufspannen
-   Vector<T,ndim> extend(physLength, physLength, physLength);
-   Vector<T,ndim> origin(-physLength/2., -physLength/2., -physLength/2.);
+   Vector<T,ndim> extend{Domainelength/physLength, physwidth/physLength, physspan/physLength};
+   Vector<T,ndim> origin{-Domainelength/physLength/2., -physwidth/physLength/2., -physspan/physLength/2.};
    IndicatorCuboid3D<T> cuboid(extend, origin);
    CuboidDecomposition3D<T> cuboidDecomposition(cuboid, converter.getPhysDeltaX(), singleton::mpi().getSize());
    cuboidDecomposition.setPeriodicity({false,false,false});
@@ -387,14 +386,23 @@
    // --- Messpunkte in physikalischen Koordinaten (m)
    // --- Zwei Messpunkte in physikalischen Koordinaten (m)
  //#ifdef FEATURE_WATCHPOINTS
- std::array<Vector<T,ndim>,2> measurePhysR = {
-  Vector<T,ndim>{physLength*T(0.75)/T(2.),0., 0.},
-  Vector<T,ndim>{physLength*T(0.75)/T(2.)+converter.getPhysDeltaX()*T(3.),0.,0.}
-};
+ //Messpunkt X-Achse nehmen
+   std::array<Vector<T,ndim>,2> measurePhysR = {
+     Vector<T,ndim>{lambda_phys*T(0.75),0., 0.},
+     Vector<T,ndim>{lambda_phys*T(0.75)+lambda_phys/T(2.),0.,0.}
+   };
    std::array<Vector<int,4>,2> measureLatticeR{};
  
-   SuperD<T,descriptors::D3<fields::PHYS_R,descriptors::SCALAR>> watchpointsD(loadBalancer);
+   // Messpunkt diagonal nehmen:
+   std::array<Vector<T,ndim>,2> measurePhysDiagonal = {
+     Vector<T,ndim>{lambda_phys * T(0.75) / std::sqrt(T(2)),lambda_phys * T(0.75) / std::sqrt(T(2)), T(0)},
+     Vector<T,ndim>{lambda_phys * T(0.75) / std::sqrt(T(2))+ lambda_phys / (T(2) * std::sqrt(T(2))),lambda_phys * T(0.75) / std::sqrt(T(2))+ lambda_phys / (T(2) * std::sqrt(T(2))),T(0)}
+   };
+   std::array<Vector<int,4>,2> measureLatticeDiagonal{};
  
+   SuperD<T,descriptors::D3<fields::PHYS_R,descriptors::SCALAR>> watchpointsD(loadBalancer);
+   SuperD<T,descriptors::D3<fields::PHYS_R,descriptors::SCALAR>> watchpointsDiagonal(loadBalancer);
+ // Messpunkt 1
    for (int k=0; k<2; ++k) {
      if (auto latticeR = cuboidDecomposition.getLatticeR(measurePhysR[k])) {
        measureLatticeR[k] = *latticeR;
@@ -410,44 +418,68 @@
          measureLatticeR[k][1] = blockD.getNcells()-1;
        }
      } else if (singleton::mpi().getRank()==0) {
-       std::cout << "[WARNUNG] Messpunkt " << k << " wurde NICHT lokal gefunden!\n";
+       std::cout << "[WARNUNG] X-Achse Messpunkt " << k << " wurde NICHT lokal gefunden!\n";
      }
    }
  
-   watchpointsD.setProcessingContext(ProcessingContext::Simulation);
+ // Messpunkt 2
+ for (int k=0; k<2; ++k) {
+   if (auto latticeDiagonal = cuboidDecomposition.getLatticeR(measurePhysDiagonal[k])) {
+     measureLatticeDiagonal[k] = *latticeDiagonal;
+ 
+     if (loadBalancer.isLocal(measureLatticeDiagonal[k][0])) {
+       auto& blockDiagonal = watchpointsDiagonal.getBlock(measureLatticeDiagonal[k][0]);
+       // Platz schaffen: 1 Zelle je Watchpoint am Blockende
+       blockDiagonal.resize({blockDiagonal.getNx()+1,1,1});
+       auto watchpointDiagonal = blockDiagonal.get(blockDiagonal.getNcells()-1);
+       watchpointDiagonal.template setField<fields::PHYS_R>(measurePhysDiagonal[k]);
+ 
+       // Lokalen Zellenindex merken (wir nutzen measureLatticeR[k][1] dafür)
+       measureLatticeDiagonal[k][1] = blockDiagonal.getNcells()-1;
+     }
+   } else if (singleton::mpi().getRank()==0) {
+     std::cout << "[WARNUNG] DiagonalMesspunkt " << k << " wurde NICHT lokal gefunden!\n";
+   }
+ }
+ 
+   watchpointsDiagonal.setProcessingContext(ProcessingContext::Simulation);
+  
  
    // Kopplung: schreibt den berechneten Druck in die Watchpoints
    SuperLatticePointCoupling pressureO(PressureO{},
                                        names::NavierStokes{}, sLattice,
                                        names::Points{}, watchpointsD);
- 
+                                       
+   SuperLatticePointCoupling pressureO_diag(PressureO{},
+                                        names::NavierStokes{}, sLattice,
+                                        names::Points{}, watchpointsDiagonal);
    // Zeitreihen und Konstanten für spätere Auswertung
    std::vector<T> p1, p2; 
    p1.reserve(iTmax); 
    p2.reserve(iTmax);
- 
+    // Messpunkt 2
+   std::vector<T> p3, p4; 
+   p3.reserve(iTmax); 
+   p4.reserve(iTmax);
+
    const T dtPhys = converter.getPhysDeltaT();
-   // oben sicherstellen: #include <cmath>
+   
    const T dx = std::sqrt(
      (measurePhysR[1][0] - measurePhysR[0][0]) * (measurePhysR[1][0] - measurePhysR[0][0]) +
      (measurePhysR[1][1] - measurePhysR[0][1]) * (measurePhysR[1][1] - measurePhysR[0][1]) +
      (measurePhysR[1][2] - measurePhysR[0][2]) * (measurePhysR[1][2] - measurePhysR[0][2])
    );
+   const T dxDiagonal = std::sqrt(
+    (measurePhysDiagonal[1][0] - measurePhysDiagonal[0][0]) * (measurePhysDiagonal[1][0] - measurePhysDiagonal[0][0]) +
+    (measurePhysDiagonal[1][1] - measurePhysDiagonal[0][1]) * (measurePhysDiagonal[1][1] - measurePhysDiagonal[0][1]) +
+    (measurePhysDiagonal[1][2] - measurePhysDiagonal[0][2]) * (measurePhysDiagonal[1][2] - measurePhysDiagonal[0][2])
+  );
  
-   CSV<T> csvWriter("Welle", ';', {"iT", "t", "p1", "p2"}, ".csv");
-   CSV<T> csvSummary("cp_vs_k", ';',
-     {"k_LU", "k2_LU", "cp_LU_xcorr", "cp_LU_phase", "cs_LU"},
-     ".csv");
- //#endif
- //Alt und macht die Simulation falsch
-   // Für die optionale Phasenmethode: physikalische Kreisfrequenz der Anregung bestimmen
-   // T omegaPerStep = T(0);
-   //   // in setBoundaryValues(local) wurde sin(iT * 2π/40) verwendet
-   // omegaPerStep =  2. * std::numbers::pi_v<T> /40.0;
-   // const T omegaPhys = omegaPerStep / dtPhys;
+   CSV<T> csvWriter("Welle", ';', {"iT", "t", "p1(xAchse)", "p2(XAchse)","p3(diagonal)","p4(diagonal)"}, ".csv");
+   /*CSV<T> csvSummary("cp_vs_k", ';',
+     {"kLU", "k2LU", "cpLU_xcorr", "cpLU_phase", "csLU"},
+     ".csv");*/
  
-   //#ifdef FEATURE_WATCHPOINTS
-   // Messung Plot Amplitudenverlauf
    // --- Druck-Functor einmal definieren ---
    SuperLatticePhysPressure3D<T, DESCRIPTOR> pressureF(sLattice, converter);
    AnalyticalFfromSuperF3D<T> pressureInterp(pressureF, true, true);
@@ -458,36 +490,75 @@
    std::vector<T> p_snap(NxLine, T(0)); // Snapshot-Werte
    std::size_t n_accum = 0;
  
-   const T x0 = -physLength*2.4/2.;       // wie in deiner Geometrie
-   const T x1 =  physLength*2.4/2.;
+   const T x0 = -physLength*Domainelength/2.;       // wie in deiner Geometrie
+   const T x1 =  physLength*Domainelength/2.;
    const T y0 =  T(0), z0 = T(0);
    for (int i=0; i<NxLine; ++i) {
      x_phys[i] = x0 + (x1 - x0) * ( (i + T(0.5)) / T(NxLine) );
    }
   // #endif
  
-  const T lambda_LU=lambda_phys/physDeltaX;
-  const T omega0= cs_LU*T(2)*std::numbers::pi_v<T> /lambda_LU;
-  const T t_vi= T(2)*(converter.getLatticeRelaxationTime()-T(1)/T(2) );
-  const T cp_LU_over_cs_LU_analytic= 1.+(T(1)/T(12))*omega0*omega0 - (T(5)/8.) *(omega0*t_vi)*(omega0*t_vi); // Formel Heinrichs
-  const T cp_LU_analytic = cp_LU_over_cs_LU_analytic*cs_LU;
-  clout<< "CP/CS_LU ANALYTISCH: "<<cp_LU_over_cs_LU_analytic << " ; omega0 analytisch: "<<omega0<<" ; tvi analytisch: " <<t_vi<< " ; Cp_LU_analytisch: "<< cp_LU_analytic<< std::endl;
-  T GP_Lambda=lambda_phys / physDeltaX;
-  
-  clout<< "Gitterpunkte je Wellenlaenge: "<<GP_Lambda<<" Lambda phys: "<<lambda_phys<<std::endl;
+  const T cellsPerLambdaConverter = lambda_phys / converter.getPhysDeltaX();
+  clout << "Gitterpunkte pro Wellenlänge (aus Converter): " 
+      << cellsPerLambdaConverter << std::endl;
+  clout << "physViscosity: "<<physViscosity<< std::endl;
+ 
+ // --- Abtastlinien anlegen ---
+
+ // Linie 1: entlang x-Achse (wie bisher)
+ std::vector<T> x_phys_x(NxLine), p_max_x(NxLine, T(0)), p_rss_x(NxLine, T(0));
+ std::vector<T> p_snap_x(NxLine, T(0));
+ std::size_t n_accum_x = 0;
+
+ // Linie 2: Diagonale (Beispiel: von (x0,y0,z0) nach (x1,y1,z1))
+ std::vector<T> x_phys_diag(NxLine), y_phys_diag(NxLine), z_phys_diag(NxLine);
+ std::vector<T> p_max_diag(NxLine, T(0)), p_rss_diag(NxLine, T(0));
+ std::vector<T> p_snap_diag(NxLine, T(0));
+ std::size_t n_accum_diag = 0;
+
+ // Diagonale: z.B. in y-Richtung von -physwidth/2 nach +physwidth/2
+ const T y_start = -physwidth/2.;
+ const T y_end   =  physwidth/2.;
+ const T z_diag  = 0.; // konstant, wenn du nur in x-y-Ebene diagonal willst
+
+ for (int i=0; i<NxLine; ++i) {
+     const T s = (i + T(0.5)) / T(NxLine); // Parameter [0,1]
+
+     // Linie entlang x (wie bisher)
+     x_phys_x[i] = x0 + (x1 - x0) * s;
+
+     // Diagonale
+     x_phys_diag[i] = x0 + (x1 - x0) * s;
+     y_phys_diag[i] = y_start + (y_end - y_start) * s;
+     z_phys_diag[i] = z_diag;
+ }
+
+
+
+    const T omega0= cs_LU*T(2)*std::numbers::pi_v<T> /lambda_LU;
+    const T t_vi= T(2)*(converter.getLatticeRelaxationTime()-T(1)/T(2) );
+    const T cp_LU_over_cs_LU_analytic= 1.-(T(1)/T(36))*(omega0/cs_LU)*(omega0/cs_LU) + (T(1)/8.) *(omega0*t_vi)*(omega0*t_vi); // Formel 3.17. Heinrichs
+    const T cp_LU_analytic = cp_LU_over_cs_LU_analytic*cs_LU;
+    clout<< "CP/CS_LU ANALYTISCH: "<<cp_LU_over_cs_LU_analytic << " ; omega0 analytisch: "<<omega0<<" ; tvi analytisch: " <<t_vi<< " ; Cp_LU_analytisch: "<< cp_LU_analytic<< std::endl;
+
 
    //--------------------------------------- FOR SCHLEIFE-------------------------------------------------------------------------------------------
    for (std::size_t iT=0; iT < iTmax; ++iT) {
      // === 5th Step: Definition of Initial and Boundary Conditions ===
      setBoundaryValues(converter, sLattice, iT, superGeometry, amplitude,rho0,lambda_phys,omegaPhys);
      
-    
+    // #ifdef FEATURE_WATCHPOINTS
      // ------------------------- Messwerte nehmen
- 
      // ------------------------- Messwerte nehmen (2 Sensoren)
-     pressureO.execute();
-     watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
- 
+     watchpointsD.setProcessingContext(ProcessingContext::Simulation);
+      watchpointsDiagonal.setProcessingContext(ProcessingContext::Simulation);
+
+      pressureO.execute();
+      pressureO_diag.execute();
+
+      watchpointsD.setProcessingContext(ProcessingContext::Evaluation);
+      watchpointsDiagonal.setProcessingContext(ProcessingContext::Evaluation);
+
      // lokale Messwerte sammeln
      std::vector<T> localP(2, T(0)), globalP(2, T(0));
      for (int k=0; k<2; ++k) {
@@ -498,56 +569,84 @@
          localP[k] += converter.getPhysPressure(pu);                 // in phys. Druck [Pa]
        }
      }
- 
+
      #ifdef PARALLEL_MODE_MPI
      singleton::mpi().reduceVect(localP, globalP, MPI_SUM);
      singleton::mpi().bCast(globalP.data(), globalP.size());
      #else
      globalP = localP;
      #endif
+
+     std::vector<T> localPD(2, T(0)), globalPD(2, T(0));
+     for (int k=0; k<2; ++k) {
+       if (loadBalancer.isLocal(measureLatticeDiagonal[k][0])) {
+        auto& blkD  = watchpointsDiagonal.getBlock(loadBalancer.loc(measureLatticeDiagonal[k][0]));
+        auto  cellD = blkD.get(measureLatticeDiagonal[k][1]);
+        const T puD = cellD.template getField<descriptors::SCALAR>();
+        localPD[k] += converter.getPhysPressure(puD);           // in phys. Druck [Pa]
+       }
+     }
+     #ifdef PARALLEL_MODE_MPI
+     singleton::mpi().reduceVect(localPD, globalPD, MPI_SUM);
+     singleton::mpi().bCast(globalPD.data(), globalPD.size());
+     #else
+     globalPD = localPD;
+     #endif
+
+
  
      // Zeitreihen füllen und CSV schreiben
      p1.push_back(globalP[0]);
      p2.push_back(globalP[1]);
-     csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), globalP[0], globalP[1]});
+     //csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), globalP[0], globalP[1]});
+     p3.push_back(globalPD[0]);
+     p4.push_back(globalPD[1]);
+     csvWriter.writeDataFile(iT, {converter.getPhysTime(iT), globalP[0], globalP[1], globalPD[0], globalPD[1]});
  
  
-     // std::cout << "[iT=" << iT << ", t=" << converter.getPhysTime(iT) << "s] "
-     //           << "Gemessener Druck am Punkt ("
-     //           << measurePhysR[0] << ", "
-     //           << measurePhysR[1] << ", "
-     //           << measurePhysR[2] << ") (PU): "
-     //           << T{globalMeasurements[0]}<< std::endl;
- 
-         
      if ( iT%iTvtk == 0 ) {getGraphicalResults(sLattice, converter, iT, superGeometry, amplitude);}
  
- 
+    // #ifdef FEATURE_WATCHPOINTS
      //===Zwischenschritt Amplitudenverlauf=====
      // --- p(x,t) auf der Linie auslesen ---
-       for (int i=0; i<NxLine; ++i) {
-         T out;
-         T pos[3] = { x_phys[i], y0, z0 };
-         pressureInterp(&out, pos); // out in [Pa], weil *Phys*Pressure
-         const T a = std::abs(out);
-         if (a > p_max[i]) p_max[i] = a;      // Peak-Hüllkurve
-         p_rss[i] += out*out;                 // für RMS
-       }
-       // Optional: Snapshot zu einem gewünschten Zeitpunkt sichern
-       // Beispiel: Snapshot beim Maximum am ersten Sensor (wenn du t* kennst):
-       // if (iT == iT_snapshot) { p_snap = momentane Werte; }
-       ++n_accum;
- 
- 
+       //===Zwischenschritt Amplitudenverlauf=====
+
+    // Linie 1: entlang x-Achse
+    for (int i=0; i<NxLine; ++i) {
+      T out;
+      T pos_x[3] = { x_phys_x[i], y0, z0 };
+      pressureInterp(&out, pos_x); // [Pa]
+      const T a = std::abs(out);
+      if (a > p_max_x[i]) p_max_x[i] = a;
+      p_rss_x[i] += out*out;
+    }
+    // Optional Snapshot auf der x-Achse
+    // if (iT == iT_snapshot) { p_snap_x[i] = out; }
+    ++n_accum_x;
+
+    // Linie 2: Diagonale
+    for (int i=0; i<NxLine; ++i) {
+      T out;
+      T pos_d[3] = { x_phys_diag[i], y_phys_diag[i], z_phys_diag[i] };
+      pressureInterp(&out, pos_d); // [Pa]
+      const T a = std::abs(out);
+      if (a > p_max_diag[i]) p_max_diag[i] = a;
+      p_rss_diag[i] += out*out;
+    }
+    // Optional Snapshot auf der Diagonalen
+    // if (iT == iT_snapshot) { p_snap_diag[i] = out; }
+    ++n_accum_diag;
+
+       //#endif
+       
      // === 6th Step: Collide and Stream Execution ===
      sLattice.collideAndStream();
      // === 7th Step: Computation and Output of the Results ===
      if ( iT%iTtimer == 0 ) {timer.update(iT); timer.printStep();}
      }
  
-     #include <limits>
- #include <algorithm>
- 
+     
+ //#ifdef FEATURE_WATCHPOINTS
  // --- Hilfsfunktion: alle Peak-Zeiten (lokale Maxima) finden, mit Parabel-Refinement
  auto findPeakTimes = [&](const std::vector<T>& p, T dt, int guardSamples, T minAmp){
    std::vector<T> peaks;
@@ -581,296 +680,225 @@
  // --- Alle frühen Peaks beider Sensoren
  auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
  auto peaks2 = findPeakTimes(p2, dtPhys, guard, minAmp);
- 
- // --- Mittelung über mehrere Peaks ab peakN
-const int startPeak = std::max(1, peakN);         // 1-basiert aus CLI
-const int Nwin      = nPeaksAvg;                   
-const int i0        = startPeak - 1;              // 0-basierter Index
-const int i1_excl   = i0 + Nwin;                  // exklusives Ende
-
-const int nAvail = (int)std::min(peaks1.size(), peaks2.size());
-
-if (nAvail >= i1_excl) {
-  std::vector<T> cp_phys_list;
-  cp_phys_list.reserve(Nwin);
-
-  T peakSum = 0;  // Summe der Peaks für den Mittelwert
-  int validPeaks = 0;  // Zähler für gültige Peaks
-
-  for (int i = i0; i < i1_excl; ++i) {
-    const T dt_i = peaks2[i] - peaks1[i];                 // [s]
-    if (!std::isfinite(dt_i) || std::abs(dt_i) < T(1e-12)) continue;
-
-    const T cp_i = dx / std::abs(dt_i);           // [m/s]
-    if (std::isfinite(cp_i) && cp_i > T(0)) {
-      cp_phys_list.push_back(cp_i);
-      peakSum += cp_i;  // Addiere den Peak zur Summe
-      validPeaks++;     // Erhöhe den Zähler
-    }
-  }
-
-  if (validPeaks >= 3) {
-    // Mittelwert der Peaks berechnen
-    T peakMean = peakSum / validPeaks;
-
-    // Standardabweichung (Stichprobe)
-    T var = 0;
-    for (auto v : cp_phys_list) var += (v - peakMean) * (v - peakMean);
-    var /= (T)(cp_phys_list.size() - 1);
-    const T stddev = std::sqrt(std::max(var, T(0)));
-
-    // Umrechnung nach LU und Verhältnis zu cs
-    const T cp_mean_LU = peakMean * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-    const T cp_std_LU  = stddev * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-    const T cs_LU_here = T(1.) / std::sqrt(T(3.));
-    const T ratio_mean = cp_mean_LU / cs_LU_here;
-    const T ratio_std  = cp_std_LU  / cs_LU_here;
-
-    if (singleton::mpi().getRank() == 0) {
-      std::cout << "[cp|PEAK-AVG] peaks " << startPeak << "..." << (startPeak + Nwin - 1)
-                << " (used=" << cp_phys_list.size() << ") "
-                << " -> c_p=" << peakMean << " +/- " << stddev << " m/s"
-                << " | c_p_LU=" << cp_mean_LU << " +/- " << cp_std_LU
-                << " | c_p/c_s=" << ratio_mean << " +/- " << ratio_std
-                << "\n";
-    }
-
-    T Average_abweichung = ((cp_mean_LU / cs_LU / cp_LU_over_cs_LU_analytic) - T(1.)) * T(100.);
-    CSV<T> csvPeakAvg("cp_peak_avg", ';',
-      {"dumb", "k_LU", "k2_LU", "startPeak", "nPeaksWin", "nUsed",
-       "dx_m", "cp_phys_mean", "cp_phys_std", "cp_LU_mean", "cp_LU_std",
-       "cs_LU", "cp_over_cs_mean", "cp_over_cs_std",
-       "omega_LU", "tvi_LU", "cp_over_cs_analytisch", "Abweichung in %"},
-      ".csv");
-
-      std::vector<T> row = {
-        k_LU, k2_LU,
-        (T)startPeak, (T)Nwin, (T)cp_phys_list.size(),
-        dx, peakMean, stddev, cp_mean_LU, cp_std_LU,
-        cs_LU_here, ratio_mean, ratio_std,
-        omega0, t_vi, cp_LU_over_cs_LU_analytic, Average_abweichung
-      };
-      csvPeakAvg.writeDataFile(0, row);
-      
-
-  } else {
-    if (singleton::mpi().getRank() == 0) {
-      std::cout << "[cp|PEAK-AVG] Zu wenige gueltige dt-Werte im Fenster ("
-                << cp_phys_list.size() << ").\n";
-    }
-  }
-
-} else {
-  if (singleton::mpi().getRank() == 0) {
-    std::cout << "[cp|PEAK-AVG] Nicht genug Peaks: verfuegbar=" << nAvail
-              << ", benoetigt bis Peak " << (startPeak + Nwin - 1) << "\n";
-  }
-}
-
-
+ auto peaks3 = findPeakTimes(p3, dtPhys, guard, minAmp);
+ auto peaks4 = findPeakTimes(p4, dtPhys, guard, minAmp);
  // --- gewünschten Peak wählen (1=erster, 2=zweiter, ...)
  //     (CLI: --peakN 2 für zweiten Wellenberg)
  const int n = std::max(1, peakN);
- if ((int)peaks1.size() >= n && (int)peaks2.size() >= n) {
-   const T t1 = peaks1[n-1];
-   const T t2 = peaks2[n-1];
- 
-   if (t2 != t1 && std::isfinite(t1) && std::isfinite(t2)) {
-     const T cp_peak_phys = dx / std::abs(t2 - t1); // [m/s]
-     const T cp_peak_LU  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-     const T cs_LU_here  = T(1.)/sqrt(T(3.));   //std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
-     const T ratio        = cp_peak_LU / cs_LU_here;
- 
-     if (singleton::mpi().getRank()==0) {
-       std::cout << "[cp|PEAK#" << n << "] t1="<<t1<<" s, t2="<<t2<<" s"
-                 << " -> c_p="<<cp_peak_phys<<" m/s"
-                 << " | c_p_LU="<<cp_peak_LU
-                 << " | c_p/c_s="<<ratio << "\n";
-     }
-     const T Abweichung= (T(1)- ratio/cp_LU_over_cs_LU_analytic)*T(100);
-     // CSV schreiben (eigene Datei oder an deine bestehende anhängen)
-   
-     CSV<T> csvPeak("cp_peak_n", ';',
-      {"dumb","k_LU","k2_LU","peakN",
-       "cp_phys","cp_LU","cs_LU","cp_over_cs",
-       "omega_LU","tvi_LU","omega_tvi_sq","cp_over_cs_analytisch","Abweichung"},
+
+// Prüfen, ob ALLE vier Sensorpaare genug Peaks haben
+if ((int)peaks1.size() >= n && (int)peaks2.size() >= n &&
+    (int)peaks3.size() >= n && (int)peaks4.size() >= n) {
+
+  const T t1 = peaks1[n-1];
+  const T t2 = peaks2[n-1];
+  const T t3 = peaks3[n-1];
+  const T t4 = peaks4[n-1];
+
+  // ---------------- Messpunkt 1: X-Achse ----------------
+  T cp_peak_phys      = std::numeric_limits<T>::quiet_NaN();
+  T cp_peakLU       = std::numeric_limits<T>::quiet_NaN();
+  T csLU_here       = std::sqrt(T(1) / descriptors::invCs2<T,DESCRIPTOR>());
+  T ratio             = std::numeric_limits<T>::quiet_NaN();
+
+  if (t2 != t1 && std::isfinite(t1) && std::isfinite(t2)) {
+    cp_peak_phys = dx / std::abs(t2 - t1); // [m/s]
+    cp_peakLU  = cp_peak_phys * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    ratio        = cp_peakLU / csLU_here;
+
+    if (singleton::mpi().getRank() == 0) {
+      std::cout << "[cp|PEAK#" << n << " X-Achse] t1=" << t1 << " s, t2=" << t2 << " s"
+                << " -> c_p=" << cp_peak_phys << " m/s"
+                << " | c_pLU=" << cp_peakLU
+                << " | c_p/c_s=" << ratio << "\n";
+    }
+  } else {
+    if (singleton::mpi().getRank() == 0) {
+      std::cout << "[cp|PEAK#" << n << " X-Achse] ungültige Peak-Zeiten.\n";
+    }
+  }
+
+  // ---------------- Messpunkt 2: Diagonale ----------------
+  T cp_peak_phys_Diagonal     = std::numeric_limits<T>::quiet_NaN();
+  T cp_peakLU_Diagonal      = std::numeric_limits<T>::quiet_NaN();
+  T csLU_here_Diagonal      = csLU_here;  // gleiches cs
+  T ratio_Diagonal            = std::numeric_limits<T>::quiet_NaN();
+
+  if (t4 != t3 && std::isfinite(t3) && std::isfinite(t4)) {
+    cp_peak_phys_Diagonal = dxDiagonal / std::abs(t4 - t3); // [m/s]
+    cp_peakLU_Diagonal  = cp_peak_phys_Diagonal * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    ratio_Diagonal        = cp_peakLU_Diagonal / csLU_here_Diagonal;
+
+    if (singleton::mpi().getRank() == 0) {
+      std::cout << "[cp|PEAK#" << n << " Diagonale] t3=" << t3 << " s, t4=" << t4 << " s"
+                << " -> c_p=" << cp_peak_phys_Diagonal << " m/s"
+                << " | c_pLU=" << cp_peakLU_Diagonal
+                << " | c_p/c_s=" << ratio_Diagonal << "\n";
+    }
+  } else {
+    if (singleton::mpi().getRank() == 0) {
+      std::cout << "[cp|PEAK#" << n << " Diagonale] ungültige Peak-Zeiten.\n";
+    }
+  }
+
+  // ---------------- CSV schreiben (beide Messmethoden zusammen) ----------------
+  if (singleton::mpi().getRank() == 0) {
+    CSV<T> csvPeak("cp_peak_n", ';',
+      {"dumb","kLU","k2LU","peakN",
+       "cp_phys","cpLU","csLU","cp_over_cs",
+       "cp_phys_Diagonal","cpLU_Diagonal","csLU_Diagonal","cp_over_cs_Diagonal","cp/cs analytisch"},
       ".csv");
 
-    csvPeak.writeDataFile(0,{k_LU, k2_LU, T(peakN), cp_peak_phys, cp_peak_LU, cs_LU_here, ratio,
-      omega0, t_vi, T(0), cp_LU_over_cs_LU_analytic,Abweichung});
+    csvPeak.writeDataFile(0, {
+      kLU, k2LU, T(peakN),
+      cp_peak_phys, cp_peakLU, csLU_here,        ratio,
+      cp_peak_phys_Diagonal, cp_peakLU_Diagonal, csLU_here_Diagonal, ratio_Diagonal,cp_LU_over_cs_LU_analytic
+    });
+  }
+
+} else {
+  // Dieser else gehört zum großen if(...) über die Peak-Anzahlen
+  if (singleton::mpi().getRank() == 0) {
+    std::cout << "[cp|PEAK#" << n << "] Nicht genug Peaks gefunden: "
+              << "sensor1=" << peaks1.size()
+              << ", sensor2=" << peaks2.size()
+              << ", sensor3=" << peaks3.size()
+              << ", sensor4=" << peaks4.size()
+              << "\n";
+  }
+}
+
+ //#endif
+ //#ifdef FEATURE_WATCHPOINTS 
+ 
+     // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
+ 
+     // Optional: Einschwingtransienten verwerfen (z.B. erste 1-2 Perioden)
+     auto drop_front = [&](std::vector<T>& v, std::size_t n){
+       if (v.size()>n) v.erase(v.begin(), v.begin()+n);
+     };
+     {
+       // 1 Periode ≈ (2π / omegaPhys) Sekunden
+       const T Tper = 2.*std::numbers::pi_v<T> / std::max(omegaPhys, T(1e-12));
+       const std::size_t Ndrop = (std::size_t)std::ceil(1.0 * Tper / dtPhys); // 1 Periode
+       drop_front(p1, Ndrop);
+       drop_front(p2, Ndrop);
+     }
+
+     // Cross-Correlation (einfach, normalisiert, Lag um 0 herum suchen)
+     auto xcorrLag = [&](const std::vector<T>& a, const std::vector<T>& b)->int {
+       const int N = (int)std::min(a.size(), b.size());
+       if (N<=3) return 0;
+       // maximaler Lag heuristisch begrenzen
      
-   } else {
-     if (singleton::mpi().getRank()==0) std::cout << "[cp|PEAK#" << n << "] ungültige Peak-Zeiten.\n";
-   }
- } else {
-   if (singleton::mpi().getRank()==0) {
-     std::cout << "[cp|PEAK#" << n << "] Nicht genug Peaks gefunden: "
-               << "sensor1="<<peaks1.size()<<", sensor2="<<peaks2.size()<<"\n";
-   }
- }
+       const int maxLag = std::min(N/4, 200);  // z.B.: bis 1/4 der Datenlänge, max 200
  
  
+       // Mittelwerte entfernen
+       T ma=0, mb=0; 
+       for(int i=0;i<N;++i){ ma+=a[i]; mb+=b[i]; } 
+       ma/=N; mb/=N;
  
+       T bestC = -1e300; 
+       int bestLag = 0;
+       for (int lag=-maxLag; lag<=maxLag; ++lag) {
+         T num=0, da=0, db=0;
+         for (int i=0;i<N;++i) {
+           const int j = i+lag;
+           if (j<0 || j>=N) continue;
+           const T aa = a[i]-ma;
+           const T bb = b[j]-mb;
+           num += aa*bb; da += aa*aa; db += bb*bb;
+         }
+         if (da>0 && db>0) {
+           const T c = num / std::sqrt(da*db);
+           if (c>bestC) { bestC=c; bestLag=lag; }
+         }
+       }
+       return bestLag;
+     };
  
+     int lag = xcorrLag(p1,p2);
+     T dt = lag * dtPhys;
+     T cp_xcorr = dx / std::max(std::abs(dt), T(1e-12));
  
- 
- // ------------------------- Auswertung: Cross-Correlation & Phasenmethode
-
-// Optional: Einschwingtransienten verwerfen (1 Periode anhand omegaGuess)
-auto drop_front = [&](std::vector<T>& v, std::size_t n){
-  if (v.size()>n) v.erase(v.begin(), v.begin()+n);
-};
-
-// omegaGuess nur zur Abschätzung von Ndrop (darf cs*k sein)
-const T omegaPhys_guess = omegaPhys;
-
-{
-  const T Tper_guess = 2.*std::numbers::pi_v<T> / std::max(omegaPhys_guess, T(1e-12));
-  const std::size_t Ndrop = (std::size_t)std::ceil(1.0 * Tper_guess / dtPhys);
-  drop_front(p1, Ndrop);
-  drop_front(p2, Ndrop);
-}
-
-// ===============================
-// OMEGA aus Signal bestimmen (freie Welle)
-// ===============================
-
-T omegaPhys_meas = omegaPhys_guess; // fallback
-if (peaks1.size() >= 6) {
-  const std::size_t i0 = 1;
-  const std::size_t nPerUse = std::min<std::size_t>(5, peaks1.size()-i0-1);
-
-  T Tsum = 0;
-  std::size_t cnt = 0;
-  for (std::size_t i=0; i<nPerUse; ++i) {
-    const T Ti = peaks1[i0+i+1] - peaks1[i0+i];
-    if (Ti > 0) { Tsum += Ti; ++cnt; }
-  }
-  if (cnt > 0) {
-    const T T_meas = Tsum / T(cnt);
-    omegaPhys_meas = 2.*std::numbers::pi_v<T> / std::max(T_meas, T(1e-12));
-  }
-}
-
-if (singleton::mpi().getRank()==0) {
-  std::cout << std::setprecision(16)
-            << "[omega] omegaGuess=" << omegaPhys_guess
-            << " omegaMeas=" << omegaPhys_meas
-            << std::endl;
-}
-
-// ===============================
-// Cross-Correlation (Lag in Samples)
-// ===============================
-auto xcorrLag = [&](const std::vector<T>& a, const std::vector<T>& b)->int {
-  const int N = (int)std::min(a.size(), b.size());
-  if (N<=3) return 0;
-  const T cs_phys_here = cs_LU * converter.getPhysDeltaX() / converter.getPhysDeltaT();
-  const T tExpected = dx / cs_phys_here;
-  const int maxLag = std::min(
-    (int)std::round(2.0 * tExpected / dtPhys),
-    N-1
-);
-
-
-
-
-
-  T ma=0, mb=0; 
-  for(int i=0;i<N;++i){ ma+=a[i]; mb+=b[i]; } 
-  ma/=N; mb/=N;
-
-  T bestC = -1e300; 
-  int bestLag = 0;
-  for (int lag=-maxLag; lag<=maxLag; ++lag) {
-    T num=0, da=0, db=0;
-    for (int i=0;i<N;++i) {
-      const int j = i-lag;
-      if (j<0 || j>=N) continue;
-      const T aa = a[i]-ma;
-      const T bb = b[j]-mb;
-      num += aa*bb; da += aa*aa; db += bb*bb;
-    }
-    if (da>0 && db>0) {
-      const T c = num / std::sqrt(da*db);
-      if (c>bestC) { bestC=c; bestLag=lag; }
-    }
-  }
-  return bestLag;
-};
-
-int lag = xcorrLag(p1,p2);
-T dt = lag * dtPhys;
-T cp_xcorr = dx / std::max(std::abs(dt), T(1e-12));
-
-if (singleton::mpi().getRank()==0) {
-  std::cout << "[cp|XCORR] dx="<<dx<<" m, lag="<<lag<<" dt="<<dt
-            <<" -> c_p="<<cp_xcorr<<" m/s\n";
-}
-
-// ===============================
-// Phasenmethode mit omegaPhys_meas
-// ===============================
-auto complexProj = [&](const std::vector<T>& p, T omegaUse)->std::pair<T,T>{
-  T A=0, B=0;
-  const std::size_t N = p.size();
-  for (std::size_t n=0;n<N;++n){
-    const T t = n*dtPhys;
-    A += p[n]*std::cos(omegaUse*t);
-    B += p[n]*std::sin(omegaUse*t);
-  }
-  const T phase = std::atan2(-B, A);
-  return {A, phase};
-};
-
-if (p1.size()>=8 && p2.size()>=8) {
-  auto [A1,phi1] = complexProj(p1, omegaPhys_meas);
-  auto [A2,phi2] = complexProj(p2, omegaPhys_meas);
-
-  T dphi = phi2 - phi1;
-  while (dphi >  M_PI) dphi -= 2*M_PI;
-  while (dphi < -M_PI) dphi += 2*M_PI;
-
-  const T cp_phase = std::abs(omegaPhys_meas * dx / std::max(std::abs(dphi), T(1e-12)));
-
-  if (singleton::mpi().getRank()==0) {
-    std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys_meas
-              <<" -> c_p="<<cp_phase<<" m/s\n";
-  }
-
-  const T cp_LU_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-  const T cp_LU_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
-  const T cp_cs_corr  = cp_LU_xcorr/cs_LU;
-
-  csvSummary.writeDataFile(0, {k_LU, k2_LU, cp_LU_xcorr, cp_LU_phase, cs_LU,
-                              cp_cs_corr, cp_LU_analytic, cp_LU_over_cs_LU_analytic});
-}
-
-     
-     //===Amplitudenverlauf eintragen=======
-     // RMS aus Summe der Quadrate
-     std::vector<T> p_rms(NxLine);
-     for (int i=0; i<NxLine; ++i) {
-       p_rms[i] = std::sqrt(p_rss[i] / std::max<std::size_t>(n_accum,1));
+     if (singleton::mpi().getRank()==0) {
+       std::cout << "[cp|XCORR] dx="<<dx<<" m, lag="<<lag<<" Samples, dt="<<dt
+                 <<" s -> c_p="<<cp_xcorr<<" m/s\n";
      }
  
-     // --- CSVs schreiben ---
-     // 1) Peak-Hüllkurve
-     CSV<T> csvAmpPeak("amplitude_peak_vs_x", ';', {"x_phys_m", "p_peak_Pa"}, ".csv");
-     for (int i=0; i<NxLine; ++i) csvAmpPeak.writeDataFile(i, {x_phys[i], p_max[i]});
+     // -------- Optional: Phasenmethode (benötigt korrekte omegaPhys) ----------------------------------------------------------------------------------------------------------------------------
+     auto complexProj = [&](const std::vector<T>& p)->std::pair<T,T>{
+       T A=0, B=0; // Re=A, Im=B (mit -sin für Im)
+       const std::size_t N = p.size();
+       for (std::size_t n=0;n<N;++n){
+         const T t = n*dtPhys;
+         A += p[n]*std::cos(omegaPhys*t);
+         B += p[n]*std::sin(omegaPhys*t);
+       }
+       const T phase = std::atan2(-B, A); // Phase ∈ (-π, π]
+       return {A, phase};
+     };
  
-     // 2) RMS-Hüllkurve
-     CSV<T> csvAmpRms("amplitude_rms_vs_x", ';', {"x_phys_m", "p_rms_Pa"}, ".csv");
-     for (int i=0; i<NxLine; ++i) csvAmpRms.writeDataFile(i, {x_phys[i], p_rms[i]});
+     if (p1.size()>=8 && p2.size()>=8) {
+       auto [A1,phi1] = complexProj(p1);
+       auto [A2,phi2] = complexProj(p2);
  
-     // 3) (optional) Snapshot
-     CSV<T> csvSnap("amplitude_snapshot_vs_x", ';', {"x_phys_m", "p_snapshot_Pa"}, ".csv");
-     for (int i=0; i<NxLine; ++i) csvSnap.writeDataFile(i, {x_phys[i], p_snap[i]});
+       T dphi = phi2 - phi1;
+       while (dphi >  M_PI) dphi -= 2*M_PI;
+       while (dphi < -M_PI) dphi += 2*M_PI;
  
+       const T cp_phase = std::abs(omegaPhys * dx / std::max(std::abs(dphi), T(1e-12)));
+ 
+       if (singleton::mpi().getRank()==0) {
+         std::cout << "[cp|PHASE] dphi="<<dphi<<" rad, omega="<<omegaPhys
+                   <<" rad/s -> c_p="<<cp_phase<<" m/s\n";
+       }
+ 
+         // Umrechnung nach lattice-Einheiten:
+             const T cpLU_xcorr = cp_xcorr * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+             const T cpLU_phase = cp_phase * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+            // csvSummary.writeDataFile(0, {kLU, k2LU, cpLU_xcorr, cpLU_phase, csLU});
+ 
+     }
+     
+     //===Amplitudenverlauf eintragen=======
+     // RMS X-Achse
+std::vector<T> p_rms_x(NxLine);
+for (int i=0; i<NxLine; ++i) {
+    p_rms_x[i] = std::sqrt(p_rss_x[i] / std::max<std::size_t>(n_accum_x,1));
+}
+
+// RMS Diagonale
+std::vector<T> p_rms_diag(NxLine);
+for (int i=0; i<NxLine; ++i) {
+    p_rms_diag[i] = std::sqrt(p_rss_diag[i] / std::max<std::size_t>(n_accum_diag,1));
+}
+
+// --- CSVs schreiben ---
+
+    // 1) Peak-Hüllkurve X
+    CSV<T> csvAmpPeakX("amplitude_peak_vs_xaxis", ';', {"x_phys_m", "p_peak_Pa"}, ".csv");
+    for (int i=0; i<NxLine; ++i)
+        csvAmpPeakX.writeDataFile(i, {x_phys_x[i], p_max_x[i]});
+
+    // 2) RMS-Hüllkurve X
+    CSV<T> csvAmpRmsX("amplitude_rms_vs_xaxis", ';', {"x_phys_m", "p_rms_Pa"}, ".csv");
+    for (int i=0; i<NxLine; ++i)
+        csvAmpRmsX.writeDataFile(i, {x_phys_x[i], p_rms_x[i]});
+
+    // 3) Peak-Hüllkurve Diagonale
+    CSV<T> csvAmpPeakDiag("amplitude_peak_vs_diag", ';', {"x_phys_m", "y_phys_m", "z_phys_m", "p_peak_Pa"}, ".csv");
+    for (int i=0; i<NxLine; ++i)
+        csvAmpPeakDiag.writeDataFile(i, {x_phys_diag[i], y_phys_diag[i], z_phys_diag[i], p_max_diag[i]});
+
+    // 4) RMS-Hüllkurve Diagonale
+    CSV<T> csvAmpRmsDiag("amplitude_rms_vs_diag", ';', {"x_phys_m", "y_phys_m", "z_phys_m", "p_rms_Pa"}, ".csv");
+    for (int i=0; i<NxLine; ++i)
+        csvAmpRmsDiag.writeDataFile(i, {x_phys_diag[i], y_phys_diag[i], z_phys_diag[i], p_rms_diag[i]});
+
  
  
     timer.stop();
     timer.printSummary();
   }
-  
-  

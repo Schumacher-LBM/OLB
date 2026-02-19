@@ -276,6 +276,8 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    singleton::directories().setOutputDir(outdir);
    // Welche Spitze auswerten? 1=erster Wellenberg, 2=zweiter, ...
    int peakN = args.getValueOrFallback("--peakN", 1.);
+   int nPeaksAvg = args.getValueOrFallback("--nPeaksAvg", 5);
+
    T lambda_phys=args.getValueOrFallback("--lambda",0.6);
    T nPer = args.getValueOrFallback("--nPer",40.);
     const int ndim = 3; // a few things (e.g. SuperSum3D) cannot be adapted to 2D, but this should help speed it up
@@ -379,10 +381,12 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
    //#elif defined(FEATURE_THREED)
    // --- Messpunkte in physikalischen Koordinaten (m)
    // --- Zwei Messpunkte in physikalischen Koordinaten (m)
-   
+
+   T delta_x = converter.getPhysDeltaX();
+
    std::array<Vector<T,ndim>,2> measurePhysR = {
      Vector<T,ndim>{domainlenth*0.2, physwidth/2., physspan/2.},
-     Vector<T,ndim>{domainlenth*0.2+T(0.05), physwidth/2., physspan/2.}
+     Vector<T,ndim>{domainlenth*0.2+delta_x*T(2.), physwidth/2., physspan/2.}
    };
    std::array<Vector<int,4>,2> measureLatticeR{};
 
@@ -586,7 +590,90 @@ To Do: Schallgeschw. und Amplitude an die Werte von Luft anpassen und Quellen fi
  auto peaks1 = findPeakTimes(p1, dtPhys, guard, minAmp);
  auto peaks2 = findPeakTimes(p2, dtPhys, guard, minAmp);
  
- 
+ // --- Mittelung über mehrere Peaks ab peakN
+const int startPeak = std::max(1, peakN);         // 1-basiert aus CLI
+const int Nwin      = nPeaksAvg;                   
+const int i0        = startPeak - 1;              // 0-basierter Index
+const int i1_excl   = i0 + Nwin;                  // exklusives Ende
+
+const int nAvail = (int)std::min(peaks1.size(), peaks2.size());
+
+if (nAvail >= i1_excl) {
+  std::vector<T> cp_phys_list;
+  cp_phys_list.reserve(Nwin);
+
+  T peakSum = 0;  // Summe der Peaks für den Mittelwert
+  int validPeaks = 0;  // Zähler für gültige Peaks
+
+  for (int i = i0; i < i1_excl; ++i) {
+    const T dt_i = peaks2[i] - peaks1[i];                 // [s]
+    if (!std::isfinite(dt_i) || std::abs(dt_i) < T(1e-12)) continue;
+
+    const T cp_i = dx / std::abs(dt_i);           // [m/s]
+    if (std::isfinite(cp_i) && cp_i > T(0)) {
+      cp_phys_list.push_back(cp_i);
+      peakSum += cp_i;  // Addiere den Peak zur Summe
+      validPeaks++;     // Erhöhe den Zähler
+    }
+  }
+
+  if (validPeaks >= 3) {
+    // Mittelwert der Peaks berechnen
+    T peakMean = peakSum / validPeaks;
+
+    // Standardabweichung (Stichprobe)
+    T var = 0;
+    for (auto v : cp_phys_list) var += (v - peakMean) * (v - peakMean);
+    var /= (T)(cp_phys_list.size() - 1);
+    const T stddev = std::sqrt(std::max(var, T(0)));
+
+    // Umrechnung nach LU und Verhältnis zu cs
+    const T cp_mean_LU = peakMean * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    const T cp_std_LU  = stddev * converter.getPhysDeltaT() / converter.getPhysDeltaX();
+    const T cs_LU_here = T(1.) / std::sqrt(T(3.));
+    const T ratio_mean = cp_mean_LU / cs_LU_here;
+    const T ratio_std  = cp_std_LU  / cs_LU_here;
+
+    if (singleton::mpi().getRank() == 0) {
+      std::cout << "[cp|PEAK-AVG] peaks " << startPeak << "..." << (startPeak + Nwin - 1)
+                << " (used=" << cp_phys_list.size() << ") "
+                << " -> c_p=" << peakMean << " +/- " << stddev << " m/s"
+                << " | c_p_LU=" << cp_mean_LU << " +/- " << cp_std_LU
+                << " | c_p/c_s=" << ratio_mean << " +/- " << ratio_std
+                << "\n";
+    }
+
+    T Average_abweichung = ((cp_mean_LU / cs_LU / cp_LU_over_cs_LU_analytic) - T(1.)) * T(100.);
+    CSV<T> csvPeakAvg("cp_peak_avg", ';',
+      {"dumb", "k_LU", "k2_LU", "startPeak", "nPeaksWin", "nUsed",
+       "dx_m", "cp_phys_mean", "cp_phys_std", "cp_LU_mean", "cp_LU_std",
+       "cs_LU", "cp_over_cs_mean", "cp_over_cs_std",
+       "omega_LU", "tvi_LU", "cp_over_cs_analytisch", "Abweichung in %"},
+      ".csv");
+
+      std::vector<T> row = {
+        k_LU, k2_LU,
+        (T)startPeak, (T)Nwin, (T)cp_phys_list.size(),
+        dx, peakMean, stddev, cp_mean_LU, cp_std_LU,
+        cs_LU_here, ratio_mean, ratio_std,
+        omega0, t_vi, cp_LU_over_cs_LU_analytic, Average_abweichung
+      };
+      csvPeakAvg.writeDataFile(0, row);
+      
+
+  } else {
+    if (singleton::mpi().getRank() == 0) {
+      std::cout << "[cp|PEAK-AVG] Zu wenige gueltige dt-Werte im Fenster ("
+                << cp_phys_list.size() << ").\n";
+    }
+  }
+
+} else {
+  if (singleton::mpi().getRank() == 0) {
+    std::cout << "[cp|PEAK-AVG] Nicht genug Peaks: verfuegbar=" << nAvail
+              << ", benoetigt bis Peak " << (startPeak + Nwin - 1) << "\n";
+  }
+}
 
 
  // --- gewünschten Peak wählen (1=erster, 2=zweiter, ...)
