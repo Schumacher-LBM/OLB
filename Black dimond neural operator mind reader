@@ -1,0 +1,267 @@
+#ifndef OLB_UTILITIES_BLACK_DIAMOND_NEURAL_OPERATOR_H
+#define OLB_UTILITIES_BLACK_DIAMOND_NEURAL_OPERATOR_H
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "include/api/context.h"
+#include "include/api/model.h"
+#include "include/api/status.h"
+#include "include/api/types.h"
+
+namespace olb {
+namespace neural {
+
+/// Contiguous NCHW rank-4 float tensor for transferring OLB data to/from MindSpore.
+class Tensor4 {
+public:
+  using Shape = std::array<std::size_t, 4>;
+
+  Tensor4() = default;
+
+  explicit Tensor4(const Shape& shape)
+    : _shape(shape)
+  {
+    std::size_t count = 1;
+    for (const std::size_t extent : _shape) {
+      if (extent == 0 || count > std::numeric_limits<std::size_t>::max() / extent) {
+        _shape = {0, 0, 0, 0};
+        return;
+      }
+      count *= extent;
+    }
+    _values.resize(count);
+  }
+
+  Tensor4(const Shape& shape, const std::vector<float>& values)
+    : Tensor4(shape)
+  {
+    if (_values.size() == values.size()) {
+      _values = values;
+    } else {
+      _shape = {0, 0, 0, 0};
+      _values.clear();
+    }
+  }
+
+  const Shape& shape() const noexcept
+  {
+    return _shape;
+  }
+
+  std::size_t size() const noexcept
+  {
+    return _values.size();
+  }
+
+  bool empty() const noexcept
+  {
+    return _values.empty();
+  }
+
+  float* data() noexcept
+  {
+    return _values.data();
+  }
+
+  const float* data() const noexcept
+  {
+    return _values.data();
+  }
+
+  std::vector<float>& values() noexcept
+  {
+    return _values;
+  }
+
+  const std::vector<float>& values() const noexcept
+  {
+    return _values;
+  }
+
+private:
+  Shape _shape{0, 0, 0, 0};
+  std::vector<float> _values;
+};
+
+/// MindSpore Lite inference wrapper intended for use from OLB.
+///
+/// The supplied MindIR model defines the actual neural operator. This wrapper
+/// accepts one float32 NCHW Tensor4 and requires one float32 rank-4 output.
+class BlackDiamondNeuralOperator {
+public:
+  BlackDiamondNeuralOperator() = default;
+
+  BlackDiamondNeuralOperator(const BlackDiamondNeuralOperator&) = delete;
+  BlackDiamondNeuralOperator& operator=(const BlackDiamondNeuralOperator&) = delete;
+
+  /// Load a MindIR model for CPU inference.
+  ///
+  /// Call once before infer(). The MindSpore Lite runtime and model file must
+  /// be available in the application environment.
+  bool load(const std::string& modelPath, std::string* error = nullptr)
+  {
+    if (modelPath.empty()) {
+      return fail("MindIR model path is empty.", error);
+    }
+
+    auto context = std::make_shared<mindspore::Context>();
+    if (!context) {
+      return fail("Could not create MindSpore context.", error);
+    }
+
+    context->SetThreadNum(1);
+    context->MutableDeviceInfo().push_back(std::make_shared<mindspore::CPUDeviceInfo>());
+
+    mindspore::Status status = _model.Build(modelPath, mindspore::kMindIR, context);
+    if (status != mindspore::kSuccess) {
+      _loaded = false;
+      return fail("MindSpore failed to build the MindIR model.", error);
+    }
+
+    const auto modelInputs = _model.GetInputs();
+    if (modelInputs.size() != 1) {
+      _loaded = false;
+      return fail("BlackDiamondNeuralOperator requires a model with exactly one input.", error);
+    }
+
+    _loaded = true;
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+
+  /// Run one inference pass.
+  ///
+  /// Input and output tensors must be float32 with rank-4 NCHW shapes.
+  /// Returns false and optionally writes a diagnostic message on failure.
+  bool infer(const Tensor4& input, Tensor4* output, std::string* error = nullptr)
+  {
+    if (!_loaded) {
+      return fail("Load a MindIR model before calling infer().", error);
+    }
+    if (output == nullptr) {
+      return fail("Output tensor pointer is null.", error);
+    }
+    if (input.empty()) {
+      return fail("Input tensor is empty or has invalid dimensions.", error);
+    }
+
+    std::vector<mindspore::MSTensor> inputs = _model.GetInputs();
+    if (inputs.size() != 1) {
+      return fail("Loaded model input count changed; expected exactly one input.", error);
+    }
+
+    mindspore::MSTensor& modelInput = inputs.front();
+    if (modelInput.DataType() != mindspore::kNumberTypeFloat32) {
+      return fail("MindIR input must use float32 data.", error);
+    }
+
+    const auto modelInputShape = modelInput.Shape();
+    if (modelInputShape.size() != input.shape().size()) {
+      return fail("MindIR input must have rank 4 (NCHW).", error);
+    }
+
+    for (std::size_t axis = 0; axis < input.shape().size(); ++axis) {
+      if (modelInputShape[axis] < 0 ||
+          static_cast<std::size_t>(modelInputShape[axis]) != input.shape()[axis]) {
+        return fail("Input tensor shape does not match the MindIR model input shape.", error);
+      }
+    }
+
+    const std::size_t expectedBytes = input.size() * sizeof(float);
+    if (modelInput.DataSize() != expectedBytes) {
+      return fail("Input tensor byte size does not match the MindIR model input.", error);
+    }
+
+    void* modelInputData = modelInput.MutableData();
+    if (modelInputData == nullptr) {
+      return fail("MindSpore could not provide writable input tensor data.", error);
+    }
+    std::memcpy(modelInputData, input.data(), expectedBytes);
+
+    std::vector<mindspore::MSTensor> modelOutputs;
+    const mindspore::Status status = _model.Predict(inputs, &modelOutputs);
+    if (status != mindspore::kSuccess) {
+      return fail("MindSpore model inference failed.", error);
+    }
+    if (modelOutputs.size() != 1) {
+      return fail("BlackDiamondNeuralOperator requires a model with exactly one output.", error);
+    }
+
+    const mindspore::MSTensor& modelOutput = modelOutputs.front();
+    if (modelOutput.DataType() != mindspore::kNumberTypeFloat32) {
+      return fail("MindIR output must use float32 data.", error);
+    }
+
+    const auto modelOutputShape = modelOutput.Shape();
+    if (modelOutputShape.size() != 4) {
+      return fail("MindIR output must have rank 4 (NCHW).", error);
+    }
+
+    Tensor4::Shape outputShape{};
+    std::size_t outputElements = 1;
+    for (std::size_t axis = 0; axis < outputShape.size(); ++axis) {
+      if (modelOutputShape[axis] <= 0) {
+        return fail("MindIR output dimensions must be positive and static.", error);
+      }
+      outputShape[axis] = static_cast<std::size_t>(modelOutputShape[axis]);
+      if (outputElements > std::numeric_limits<std::size_t>::max() / outputShape[axis]) {
+        return fail("MindIR output tensor size overflows the supported size.", error);
+      }
+      outputElements *= outputShape[axis];
+    }
+
+    const std::size_t outputBytes = outputElements * sizeof(float);
+    if (modelOutput.DataSize() != outputBytes) {
+      return fail("MindIR output byte size does not match its shape.", error);
+    }
+
+    const auto outputData = modelOutput.Data();
+    if (outputData == nullptr) {
+      return fail("MindSpore returned no output tensor data.", error);
+    }
+
+    Tensor4 result(outputShape);
+    if (result.size() != outputElements) {
+      return fail("Could not allocate the output tensor.", error);
+    }
+    std::memcpy(result.data(), outputData.get(), outputBytes);
+
+    *output = std::move(result);
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+
+  bool isLoaded() const noexcept
+  {
+    return _loaded;
+  }
+
+private:
+  static bool fail(const char* message, std::string* error)
+  {
+    if (error != nullptr) {
+      *error = message;
+    }
+    return false;
+  }
+
+  mindspore::Model _model;
+  bool _loaded = false;
+};
+
+} // namespace neural
+} // namespace olb
+
+#endif // OLB_UTILITIES_BLACK_DIAMOND_NEURAL_OPERATOR_H
