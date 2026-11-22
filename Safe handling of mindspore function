@@ -1,0 +1,58 @@
+bool load(const std::string& modelPath)
+{
+  if (modelPath.empty()) return false;
+
+  auto context = std::make_shared<mindspore::Context>();
+  context->MutableDeviceInfo().push_back(
+    std::make_shared<mindspore::CPUDeviceInfo>());
+  context->SetThreadNum(1);
+
+  if (_model.Build(modelPath, mindspore::kMindIR, context)
+      != mindspore::kSuccess) {
+    return false;
+  }
+
+  _loaded = _model.GetInputs().size() == 1;
+  return _loaded;
+}
+
+bool infer(const Tensor4& input, Tensor4* output)
+{
+  if (!_loaded || output == nullptr || input.empty()) return false;
+
+  auto inputs = _model.GetInputs();
+  if (inputs.size() != 1) return false;
+
+  void* data = inputs.front().MutableData();
+  if (data == nullptr ||
+      inputs.front().DataSize() != input.size() * sizeof(float)) {
+    return false;
+  }
+
+  std::memcpy(data, input.data(), input.size() * sizeof(float));
+
+  std::vector<mindspore::MSTensor> outputs;
+  if (_model.Predict(inputs, &outputs) != mindspore::kSuccess ||
+      outputs.size() != 1) {
+    return false;
+  }
+
+  const auto& result = outputs.front();
+  if (result.Data() == nullptr) return false;
+
+  const auto shape = result.Shape();
+  if (shape.size() != 4) return false;
+
+  Tensor4::Shape resultShape{
+    static_cast<std::size_t>(shape[0]),
+    static_cast<std::size_t>(shape[1]),
+    static_cast<std::size_t>(shape[2]),
+    static_cast<std::size_t>(shape[3])
+  };
+
+  Tensor4 resultTensor(resultShape);
+  std::memcpy(resultTensor.data(), result.Data().get(),
+              resultTensor.size() * sizeof(float));
+  *output = std::move(resultTensor);
+  return true;
+}
