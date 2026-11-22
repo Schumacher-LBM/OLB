@@ -1,0 +1,145 @@
+#ifndef INDICATOR_DIAMOND_CUBIC_3D_H
+#define INDICATOR_DIAMOND_CUBIC_3D_H
+
+#include <cmath>
+#include <stdexcept>
+
+#include "functors/analytical/indicator/indicatorF3D.h"
+
+namespace olb {
+
+/// Indicator for a finite diamond-cubic structure.
+/// Lengths are in the same physical units as the geometry.
+template <typename T>
+class IndicatorDiamondCubic3D final : public IndicatorF3D<T> {
+public:
+  IndicatorDiamondCubic3D(Vector<T,3> origin,
+                          int nx, int ny, int nz,
+                          T latticeConstant,
+                          T atomRadius,
+                          T bondRadius)
+    : _origin(origin),
+      _nx(nx), _ny(ny), _nz(nz),
+      _a(latticeConstant),
+      _atomRadius(atomRadius),
+      _bondRadius(bondRadius)
+  {
+    if (nx <= 0 || ny <= 0 || nz <= 0 ||
+        latticeConstant <= T(0) ||
+        atomRadius < T(0) || bondRadius < T(0)) {
+      throw std::invalid_argument("Invalid diamond-cubic lattice dimensions or radii");
+    }
+
+    this->_myMin = origin;
+    this->_myMax = {
+      origin[0] + T(nx) * latticeConstant,
+      origin[1] + T(ny) * latticeConstant,
+      origin[2] + T(nz) * latticeConstant
+    };
+  }
+
+  bool operator()(bool output[], const T input[]) override
+  {
+    // Limit this indicator to its finite rectangular bounding box.
+    for (int d = 0; d < 3; ++d) {
+      if (input[d] < this->_myMin[d] || input[d] > this->_myMax[d]) {
+        output[0] = false;
+        return false;
+      }
+    }
+
+    // FCC sites in a conventional cubic cell; these form the A sublattice.
+    static constexpr T fcc[4][3] = {
+      {T(0),   T(0),   T(0)},
+      {T(0),   T(0.5), T(0.5)},
+      {T(0.5), T(0),   T(0.5)},
+      {T(0.5), T(0.5), T(0)}
+    };
+
+    // Four tetrahedral nearest-neighbor offsets from each A site to B sites.
+    static constexpr T tetra[4][3] = {
+      { T(0.25),  T(0.25),  T(0.25)},
+      { T(0.25), -T(0.25), -T(0.25)},
+      {-T(0.25),  T(0.25), -T(0.25)},
+      {-T(0.25), -T(0.25),  T(0.25)}
+    };
+
+    const int cx = static_cast<int>(std::floor((input[0] - _origin[0]) / _a));
+    const int cy = static_cast<int>(std::floor((input[1] - _origin[1]) / _a));
+    const int cz = static_cast<int>(std::floor((input[2] - _origin[2]) / _a));
+
+    const T atomRadius2 = _atomRadius * _atomRadius;
+
+    // Check nearby A sites for atoms and their bonds. The extra cells include
+    // neighbors whose bonds cross a conventional-cell boundary.
+    for (int i = cx - 2; i <= cx + 2; ++i) {
+      for (int j = cy - 2; j <= cy + 2; ++j) {
+        for (int k = cz - 2; k <= cz + 2; ++k) {
+          for (int b = 0; b < 4; ++b) {
+            const T ax = _origin[0] + (T(i) + fcc[b][0]) * _a;
+            const T ay = _origin[1] + (T(j) + fcc[b][1]) * _a;
+            const T az = _origin[2] + (T(k) + fcc[b][2]) * _a;
+
+            // Atom sphere.
+            const T adx = input[0] - ax;
+            const T ady = input[1] - ay;
+            const T adz = input[2] - az;
+            if (adx*adx + ady*ady + adz*adz <= atomRadius2) {
+              output[0] = true;
+              return true;
+            }
+
+            // Four covalent bonds from this A site to tetrahedral neighbors.
+            for (int n = 0; n < 4; ++n) {
+              const T bx = ax + tetra[n][0] * _a;
+              const T by = ay + tetra[n][1] * _a;
+              const T bz = az + tetra[n][2] * _a;
+
+              if (pointWithinBond(input, ax, ay, az, bx, by, bz)) {
+                output[0] = true;
+                return true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    output[0] = false;
+    return false;
+  }
+
+private:
+  bool pointWithinBond(const T input[],
+                       T ax, T ay, T az,
+                       T bx, T by, T bz) const
+  {
+    const T vx = bx - ax;
+    const T vy = by - ay;
+    const T vz = bz - az;
+    const T wx = input[0] - ax;
+    const T wy = input[1] - ay;
+    const T wz = input[2] - az;
+
+    const T length2 = vx*vx + vy*vy + vz*vz;
+    T t = (wx*vx + wy*vy + wz*vz) / length2;
+    if (t < T(0)) t = T(0);
+    if (t > T(1)) t = T(1);
+
+    const T dx = input[0] - (ax + t*vx);
+    const T dy = input[1] - (ay + t*vy);
+    const T dz = input[2] - (az + t*vz);
+
+    return dx*dx + dy*dy + dz*dz <= _bondRadius * _bondRadius;
+  }
+
+  Vector<T,3> _origin;
+  int _nx, _ny, _nz;
+  T _a;
+  T _atomRadius;
+  T _bondRadius;
+};
+
+} // namespace olb
+
+#endif
