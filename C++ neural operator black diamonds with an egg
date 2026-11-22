@@ -1,0 +1,524 @@
+#pragma once
+
+#include <array>
+#include <algorithm>
+#include <cmath>
+#include <complex>
+#include <cstddef>
+#include <random>
+#include <stdexcept>
+#include <utility>
+#include <vector>
+
+namespace neuraloperator {
+
+struct Tensor4 {
+    std::size_t channels = 0;
+    std::size_t depth = 0;
+    std::size_t height = 0;
+    std::size_t width = 0;
+    std::vector<double> values;
+
+    Tensor4() = default;
+
+    Tensor4(std::size_t c, std::size_t d, std::size_t h, std::size_t w)
+        : channels(c),
+          depth(d),
+          height(h),
+          width(w),
+          values(c * d * h * w, 0.0) {}
+
+    double& operator()(std::size_t c,
+                       std::size_t z,
+                       std::size_t y,
+                       std::size_t x) {
+        return values[((c * depth + z) * height + y) * width + x];
+    }
+
+    double operator()(std::size_t c,
+                      std::size_t z,
+                      std::size_t y,
+                      std::size_t x) const {
+        return values[((c * depth + z) * height + y) * width + x];
+    }
+};
+
+inline double gelu(double x) {
+    constexpr double k = 0.7978845608028654;
+    return 0.5 * x *
+           (1.0 + std::tanh(k * (x + 0.044715 * x * x * x)));
+}
+
+inline void add_in_place(Tensor4& a, const Tensor4& b) {
+    if (a.channels != b.channels ||
+        a.depth != b.depth ||
+        a.height != b.height ||
+        a.width != b.width) {
+        throw std::invalid_argument("Tensor shape mismatch");
+    }
+
+    for (std::size_t i = 0; i < a.values.size(); ++i) {
+        a.values[i] += b.values[i];
+    }
+}
+
+struct Linear {
+    std::size_t input_channels = 0;
+    std::size_t output_channels = 0;
+    std::vector<double> weights;
+    std::vector<double> bias;
+
+    Linear() = default;
+
+    Linear(std::size_t in,
+           std::size_t out,
+           std::mt19937& rng)
+        : input_channels(in),
+          output_channels(out),
+          weights(in * out),
+          bias(out, 0.0) {
+        const double scale =
+            std::sqrt(2.0 / static_cast<double>(in + out));
+
+        std::normal_distribution<double> normal(0.0, scale);
+
+        for (double& value : weights) {
+            value = normal(rng);
+        }
+    }
+
+    Tensor4 forward(const Tensor4& input) const {
+        if (input.channels != input_channels) {
+            throw std::invalid_argument("Linear input channel mismatch");
+        }
+
+        Tensor4 output(output_channels,
+                       input.depth,
+                       input.height,
+                       input.width);
+
+        for (std::size_t z = 0; z < input.depth; ++z) {
+            for (std::size_t y = 0; y < input.height; ++y) {
+                for (std::size_t x = 0; x < input.width; ++x) {
+                    for (std::size_t o = 0;
+                         o < output_channels;
+                         ++o) {
+                        double value = bias[o];
+
+                        for (std::size_t i = 0;
+                             i < input_channels;
+                             ++i) {
+                            value +=
+                                weights[o * input_channels + i] *
+                                input(i, z, y, x);
+                        }
+
+                        output(o, z, y, x) = value;
+                    }
+                }
+            }
+        }
+
+        return output;
+    }
+};
+
+struct SpectralConv3D {
+    using Complex = std::complex<double>;
+
+    std::size_t input_channels = 0;
+    std::size_t output_channels = 0;
+    std::size_t modes_depth = 0;
+    std::size_t modes_height = 0;
+    std::size_t modes_width = 0;
+
+    // Four repository-style 3D corner blocks:
+    // [block][input][output][depth-mode][height-mode][width-mode]
+    std::vector<Complex> weights;
+
+    SpectralConv3D() = default;
+
+    SpectralConv3D(std::size_t in,
+                   std::size_t out,
+                   std::size_t modes_z,
+                   std::size_t modes_y,
+                   std::size_t modes_x,
+                   std::mt19937& rng)
+        : input_channels(in),
+          output_channels(out),
+          modes_depth(modes_z),
+          modes_height(modes_y),
+          modes_width(modes_x),
+          weights() {
+        if (in == 0 || out == 0 ||
+            modes_z == 0 ||
+            modes_y == 0 ||
+            modes_x == 0) {
+            throw std::invalid_argument(
+                "Spectral dimensions must be nonzero");
+        }
+
+        const std::size_t modes_per_block =
+            modes_z * modes_y * modes_x;
+
+        weights.resize(
+            4 * in * out * modes_per_block);
+
+        const double scale =
+            std::sqrt(2.0 /
+                       static_cast<double>(in + out));
+
+        std::normal_distribution<double> normal(0.0, scale);
+
+        for (Complex& value : weights) {
+            value = Complex(normal(rng), normal(rng));
+        }
+    }
+
+    Tensor4 forward(const Tensor4& input) const {
+        if (input.channels != input_channels) {
+            throw std::invalid_argument(
+                "Spectral convolution channel mismatch");
+        }
+
+        if (modes_depth >=
+                input.depth / 2 + input.depth % 2 ||
+            modes_height >=
+                input.height / 2 + input.height % 2 ||
+            modes_width >=
+                input.width / 2 + input.width % 2) {
+            throw std::invalid_argument(
+                "Mode counts must be less than half "
+                "of the grid dimensions");
+        }
+
+        const std::size_t d = input.depth;
+        const std::size_t h = input.height;
+        const std::size_t w = input.width;
+        constexpr double tau = 6.2831853071795864769;
+
+        const auto input_index =
+            [d, h, w](std::size_t c,
+                      std::size_t z,
+                      std::size_t y,
+                      std::size_t x) {
+                return ((c * d + z) * h + y) * w + x;
+            };
+
+        const std::size_t mode_width = modes_width;
+        const std::size_t mode_area =
+            modes_height * mode_width;
+        const std::size_t mode_volume =
+            modes_depth * mode_area;
+
+        // 3D forward DFT:
+        // [input channel][depth][height][width].
+        std::vector<Complex> input_spectrum(
+            input_channels * d * h * w,
+            Complex(0.0, 0.0));
+
+        for (std::size_t c = 0;
+             c < input_channels;
+             ++c) {
+            for (std::size_t kz = 0;
+                 kz < d;
+                 ++kz) {
+                for (std::size_t ky = 0;
+                     ky < h;
+                     ++ky) {
+                    for (std::size_t kx = 0;
+                         kx < w;
+                         ++kx) {
+                        Complex sum(0.0, 0.0);
+
+                        for (std::size_t z = 0;
+                             z < d;
+                             ++z) {
+                            for (std::size_t y = 0;
+                                 y < h;
+                                 ++y) {
+                                for (std::size_t x = 0;
+                                     x < w;
+                                     ++x) {
+                                    const double phase =
+                                        -tau *
+                                        (static_cast<double>(kz * z) /
+                                         d +
+                                         static_cast<double>(ky * y) /
+                                         h +
+                                         static_cast<double>(kx * x) /
+                                         w);
+
+                                    sum +=
+                                        input(c, z, y, x) *
+                                        Complex(std::cos(phase),
+                                                std::sin(phase));
+                                }
+                            }
+                        }
+
+                        input_spectrum[
+                            input_index(c, kz, ky, kx)] = sum;
+                    }
+                }
+            }
+        }
+
+        std::vector<Complex> output_spectrum(
+            output_channels * d * h * w,
+            Complex(0.0, 0.0));
+
+        struct Range {
+            long begin;
+            long end;
+        };
+
+        // Repository-compatible corner decomposition.
+        // Blocks 0-3 represent:
+        // +z/+y, +z/-y, -z/+y, -z/-y.
+        const std::array<Range, 2> z_ranges{
+            Range{0, static_cast<long>(modes_depth)},
+            Range{-static_cast<long>(modes_depth), 0}
+        };
+
+        const std::array<Range, 2> y_ranges{
+            Range{0, static_cast<long>(modes_height)},
+            Range{-static_cast<long>(modes_height), 0}
+        };
+
+        std::size_t block = 0;
+
+        for (const Range& z_range : z_ranges) {
+            for (const Range& y_range : y_ranges) {
+                for (long sz = z_range.begin;
+                     sz < z_range.end;
+                     ++sz) {
+                    for (long sy = y_range.begin;
+                         sy < y_range.end;
+                         ++sy) {
+                        for (std::size_t sx = 0;
+                             sx < modes_width;
+                             ++sx) {
+                            const std::size_t kz =
+                                sz >= 0
+                                    ? static_cast<std::size_t>(sz)
+                                    : d - static_cast<std::size_t>(
+                                              -sz);
+
+                            const std::size_t ky =
+                                sy >= 0
+                                    ? static_cast<std::size_t>(sy)
+                                    : h - static_cast<std::size_t>(
+                                              -sy);
+
+                            const std::size_t kx = sx;
+
+                            const std::size_t mz =
+                                sz >= 0
+                                    ? static_cast<std::size_t>(sz)
+                                    : modes_depth -
+                                      static_cast<std::size_t>(
+                                          -sz);
+
+                            const std::size_t my =
+                                sy >= 0
+                                    ? static_cast<std::size_t>(sy)
+                                    : modes_height -
+                                      static_cast<std::size_t>(
+                                          -sy);
+
+                            const std::size_t mode =
+                                mz * mode_area +
+                                my * mode_width +
+                                sx;
+
+                            for (std::size_t o = 0;
+                                 o < output_channels;
+                                 ++o) {
+                                Complex sum(0.0, 0.0);
+
+                                for (std::size_t i = 0;
+                                     i < input_channels;
+                                     ++i) {
+                                    const std::size_t weight_index =
+                                        block *
+                                            input_channels *
+                                            output_channels *
+                                            mode_volume +
+                                        i *
+                                            output_channels *
+                                            mode_volume +
+                                        o * mode_volume +
+                                        mode;
+
+                                    sum +=
+                                        weights[weight_index] *
+                                        input_spectrum[
+                                            input_index(
+                                                i,
+                                                kz,
+                                                ky,
+                                                kx)];
+                                }
+
+                                output_spectrum[
+                                    ((o * d + kz) * h + ky) *
+                                        w +
+                                    kx] = sum;
+                            }
+                        }
+                    }
+                }
+
+                ++block;
+            }
+        }
+
+        // 3D inverse DFT.
+        Tensor4 output(output_channels, d, h, w);
+
+        for (std::size_t c = 0;
+             c < output_channels;
+             ++c) {
+            for (std::size_t z = 0;
+                 z < d;
+                 ++z) {
+                for (std::size_t y = 0;
+                     y < h;
+                     ++y) {
+                    for (std::size_t x = 0;
+                         x < w;
+                         ++x) {
+                        Complex sum(0.0, 0.0);
+
+                        for (std::size_t kz = 0;
+                             kz < d;
+                             ++kz) {
+                            for (std::size_t ky = 0;
+                                 ky < h;
+                                 ++ky) {
+                                for (std::size_t kx = 0;
+                                     kx < w;
+                                     ++kx) {
+                                    const double phase =
+                                        tau *
+                                        (static_cast<double>(kz * z) /
+                                         d +
+                                         static_cast<double>(ky * y) /
+                                         h +
+                                         static_cast<double>(kx * x) /
+                                         w);
+
+                                    sum +=
+                                        output_spectrum[
+                                            ((c * d + kz) *
+                                                 h +
+                                             ky) *
+                                                w +
+                                            kx] *
+                                        Complex(std::cos(phase),
+                                                std::sin(phase));
+                                }
+                            }
+                        }
+
+                        output(c, z, y, x) =
+                            sum.real() /
+                            static_cast<double>(d * h * w);
+                    }
+                }
+            }
+        }
+
+        return output;
+    }
+};
+
+struct FNO3D {
+    std::size_t input_channels = 0;
+    std::size_t width = 0;
+    std::size_t output_channels = 0;
+
+    Linear lift;
+    std::vector<SpectralConv3D> spectral_layers;
+    std::vector<Linear> pointwise_layers;
+    Linear project;
+
+    FNO3D(std::size_t in_channels,
+          std::size_t hidden_width,
+          std::size_t out_channels,
+          std::size_t layer_count,
+          std::size_t modes_depth,
+          std::size_t modes_height,
+          std::size_t modes_width,
+          unsigned int seed = 1234)
+        : input_channels(in_channels),
+          width(hidden_width),
+          output_channels(out_channels) {
+        if (in_channels == 0 ||
+            hidden_width == 0 ||
+            out_channels == 0 ||
+            layer_count == 0) {
+            throw std::invalid_argument(
+                "FNO dimensions and layer count "
+                "must be nonzero");
+        }
+
+        std::mt19937 rng(seed);
+
+        lift = Linear(in_channels, hidden_width, rng);
+        project =
+            Linear(hidden_width, out_channels, rng);
+
+        spectral_layers.reserve(layer_count);
+        pointwise_layers.reserve(layer_count);
+
+        for (std::size_t i = 0;
+             i < layer_count;
+             ++i) {
+            spectral_layers.emplace_back(
+                hidden_width,
+                hidden_width,
+                modes_depth,
+                modes_height,
+                modes_width,
+                rng);
+
+            pointwise_layers.emplace_back(
+                hidden_width,
+                hidden_width,
+                rng);
+        }
+    }
+
+    Tensor4 forward(const Tensor4& input) const {
+        if (input.channels != input_channels) {
+            throw std::invalid_argument(
+                "FNO input channel mismatch");
+        }
+
+        Tensor4 hidden = lift.forward(input);
+
+        for (std::size_t layer = 0;
+             layer < spectral_layers.size();
+             ++layer) {
+            Tensor4 spectral =
+                spectral_layers[layer].forward(hidden);
+
+            Tensor4 local =
+                pointwise_layers[layer].forward(hidden);
+
+            add_in_place(spectral, local);
+
+            for (double& value : spectral.values) {
+                value = gelu(value);
+            }
+
+            hidden = std::move(spectral);
+        }
+
+        return project.forward(hidden);
+    }
+};
+
+} // namespace neuraloperator
