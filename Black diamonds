@@ -1,0 +1,100 @@
+#include "functors/analytical/analyticalF.h"
+
+namespace olb {
+
+/// Shader-like RGB field masked by a diamond-cubic indicator.
+/// The three outputs are color channels, not physical velocity components.
+template <typename T>
+class DiamondCubicVectorShader3D final : public AnalyticalF3D<T,T> {
+public:
+  DiamondCubicVectorShader3D(IndicatorDiamondCubic3D<T>& lattice,
+                             Vector<T,3> origin,
+                             T time = T(0),
+                             T scale = T(1))
+    : AnalyticalF3D<T,T>(3),
+      _lattice(lattice),
+      _origin(origin),
+      _time(time),
+      _scale(scale)
+  {
+    this->getName() = "DiamondCubicVectorShader3D";
+  }
+
+  void setTime(T time)
+  {
+    _time = time;
+  }
+
+  bool operator()(T output[], const T input[]) override
+  {
+    output[0] = output[1] = output[2] = T(0);
+
+    bool inside = false;
+    _lattice(&inside, input);
+    if (!inside) {
+      return true;
+    }
+
+    // Local coordinates make the pattern follow the lattice origin.
+    const T x = input[0] - _origin[0];
+    const T y = input[1] - _origin[1];
+    const T z = input[2] - _origin[2];
+
+    const T radius = std::sqrt(x*x + y*y + z*z);
+    const T waveA = std::sin(radius * T(0.35) - _time * T(5));
+    const T waveB = std::sin(radius * T(0.75) + _time * T(2.5));
+
+    const T glowA = smoothBand(T(0.80), T(0.98), waveA);
+    const T glowB = smoothBand(T(0.88), T(0.99), waveB);
+    const T radialGlow = std::max(glowA, T(0.5) * glowB);
+
+    const T angle = std::atan2(y, x);
+    const T sweep = std::max(
+      angularGlow(angle, std::sin(_time * T(0.8)) * T(3.14159265), T(0.35)),
+      angularGlow(angle, std::cos(_time * T(0.4)) * T(1.57), T(0.15)));
+
+    const T gridX = std::sin(x * T(0.08) + std::sin(y * T(0.04)) + _time * T(0.02));
+    const T gridY = std::sin(y * T(0.08) + std::cos(x * T(0.04)) - _time * T(0.01));
+    const T grid = std::max(
+      smoothBand(T(0.92), T(0.99), std::abs(gridX)),
+      smoothBand(T(0.92), T(0.99), std::abs(gridY)));
+
+    const T intensity = _scale * std::max(T(0.3) * grid, radialGlow * sweep);
+
+    // Cyan/violet-style animated color, written as a 3-component vector.
+    output[0] = intensity * T(0.25);
+    output[1] = intensity * (T(0.75) + T(0.25) * std::sin(_time + z));
+    output[2] = intensity;
+
+    return true;
+  }
+
+private:
+  static T smoothBand(T edge0, T edge1, T value)
+  {
+    T t = (value - edge0) / (edge1 - edge0);
+    t = std::max(T(0), std::min(T(1), t));
+    return t * t * (T(3) - T(2) * t);
+  }
+
+  static T angularGlow(T angle, T center, T width)
+  {
+    // Wrap angular difference to [-pi, pi].
+    const T pi = T(3.14159265);
+    T delta = std::fmod(angle - center + pi, T(2) * pi);
+    if (delta < T(0)) {
+      delta += T(2) * pi;
+    }
+    delta -= pi;
+
+    const T distance = std::abs(delta);
+    return T(1) - smoothBand(T(0), width, distance);
+  }
+
+  IndicatorDiamondCubic3D<T>& _lattice;
+  Vector<T,3> _origin;
+  T _time;
+  T _scale;
+};
+
+} // namespace olb
